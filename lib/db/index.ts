@@ -2,6 +2,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle as pgliteDrizzle } from "drizzle-orm/pglite";
 import { drizzle as postgresDrizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import * as schema from "./schema";
 
 /**
  * The single seam between local and cloud.
@@ -16,27 +17,21 @@ import postgres from "postgres";
  * The instance is cached on `globalThis` so Next's dev hot-reload reuses PGlite's single
  * embedded connection instead of opening a new one on every module re-evaluation
  * (RESEARCH Pitfall 3 — PGlite is single-connection).
- *
- * NOTE: the populated Drizzle schema (`./schema`) arrives in Plan 02. This file is written
- * so it compiles and runs *before* that schema exists — `db.execute(sql\`...\`)` needs no
- * table types, which is exactly what the Plan 01 `SELECT 1` spike proves.
  */
 
 const url = process.env.DATABASE_URL ?? "./.pglite";
 const isPostgres = /^postgres(ql)?:\/\//.test(url);
 
-type Db =
-  | ReturnType<typeof pgliteDrizzle>
-  | ReturnType<typeof postgresDrizzle>;
-
-const globalForDb = globalThis as unknown as { __db?: Db };
-
-function createDb(): Db {
+function createDb() {
   if (isPostgres) {
     // Supabase transaction pooler (:6543) does NOT support prepared statements.
-    return postgresDrizzle(postgres(url, { prepare: false }));
+    return postgresDrizzle(postgres(url, { prepare: false }), { schema });
   }
-  return pgliteDrizzle(new PGlite(url));
+  return pgliteDrizzle(new PGlite(url), { schema });
 }
+
+export type Db = ReturnType<typeof createDb>;
+
+const globalForDb = globalThis as unknown as { __db?: Db };
 
 export const db: Db = (globalForDb.__db ??= createDb());
