@@ -57,11 +57,12 @@ Spend stays inside the plan, and execution progress is always visible. Only SFID
 
 ## Constraints
 
-- **Tech stack**: Next.js (App Router) on Vercel — single-app deploy, server + UI together
-- **Database**: Postgres (Supabase or Neon) — relational model enforces the off-plan guard and period separation; free tier + 1-click Vercel hookup
-- **Excel I/O**: SheetJS (`xlsx`) for `.xlsx` import and export
-- **Auth**: single shared password stored as a Vercel env var, checked by middleware, sets a signed cookie — no user accounts in v1
-- **UI**: editable data-grid component (e.g. Glide Data Grid / TanStack Table) for the spreadsheet feel
+- **Tech stack**: Next.js (App Router, React 19) on Vercel — single-app deploy, server + UI together
+- **Database (local-first)**: develop and run against **PGlite** (embedded Postgres, zero install) locally; deploy against **Supabase** (cloud Postgres). The app reads a single `DATABASE_URL`, so local → cloud is a config swap, not a code change. Run it fully on the local machine first; connect Supabase only when ready.
+- **ORM**: Drizzle — keeps the schema provider-agnostic (PGlite ↔ Supabase) and is lean on serverless
+- **Excel I/O**: SheetJS Community Edition from the **official CDN tarball** (npm's `xlsx` is an outdated, CVE-bearing build); parse client-side and POST validated JSON to a server action
+- **Auth**: single shared password stored as an env var, verified in middleware, sets a `jose`-signed `httpOnly` cookie — no user accounts in v1
+- **UI grid**: **AG Grid Community** (MIT, React 19-compatible) for the editable spreadsheet feel; TanStack Table is the documented fallback
 - **Extensibility**: activities defined in a typed config registry, so adding a 7th activity is a data change, not a code change
 - **Region/locale**: Indian context — ₹ currency, Indian states/districts, DD/MM/YY dates
 
@@ -71,7 +72,9 @@ Spend stays inside the plan, and execution progress is always visible. Only SFID
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Next.js on Vercel + Postgres (Supabase/Neon) + SheetJS | Cleanly supports multi-period data, off-plan guard, fast filtering, and Excel round-trip while staying "simple on Vercel" | — Pending |
+| Next.js on Vercel + Postgres + Drizzle + AG Grid Community + SheetJS CE | Cleanly supports multi-period data, off-plan guard, fast filtering, and Excel round-trip while staying "simple on Vercel" (stack verified in research, 2026-06) | — Pending |
+| Local-first dev with PGlite; deploy to Supabase | Run and test entirely on the local machine first; switch to Supabase by changing only `DATABASE_URL` (Drizzle keeps the schema portable, PGlite is real Postgres) | — Pending |
+| Cloud DB = Supabase (research narrowly preferred Neon) | User's choice; both are plain Postgres and the code is provider-agnostic, so no downside | — Pending |
 | Activities defined as config (type: measurement / item-list / status) | One grid engine serves all six; new activities are config, not code (open/closed) | — Pending |
 | Hybrid schema: shared columns real + indexed, activity-specific fields in `jsonb` | Instant filter dropdowns at scale without a migration per differing activity | — Pending |
 | Off-plan guard enforced via FK (execution → plan_row) | Makes "only planned SFIDs" a structural rule, not app logic that can be bypassed | — Pending |

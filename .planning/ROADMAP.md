@@ -31,10 +31,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A user can create a planning period (month / quarter / FY), mark it active, and all plan/actual data is scoped to a period.
   4. The database makes it structurally impossible to attach an actual to an SFID that has no plan row for that activity + period (NOT NULL FK + UNIQUE match key), independent of any app-layer check.
   5. A user can manage the selectable item master used later for POP / dealer-kit entry.
+  6. The entire app runs and is usable on a local machine with no cloud dependency (local embedded Postgres / PGlite), and switching to Supabase later requires only changing `DATABASE_URL`.
 **Plans**: TBD
 **UI hint**: yes
 
-> **Discuss-step questions to resolve before locking the schema** (do not resolve now): plan-row grain for multi-unit activities (confirmed YES — one SFID maps to multiple executions/walls, so the UNIQUE match key and whether executions are unique per plan row must reflect this); budget/planned-cost column is confirmed PRESENT and must be modeled on plan rows as a numeric column; choose numeric (never float) money columns, a version column for optimistic concurrency, `ON DELETE RESTRICT`, and the Neon **pooled** connection string from day one.
+> **Discuss-step questions to resolve before locking the schema** (do not resolve now): plan-row grain for multi-unit activities (confirmed YES — one SFID maps to multiple executions/walls, so the UNIQUE match key and whether executions are unique per plan row must reflect this); budget/planned-cost column is confirmed PRESENT and must be modeled on plan rows as a numeric column; choose numeric (never float) money columns, a version column for optimistic concurrency, and `ON DELETE RESTRICT`. **Runtime: local-first** — develop/run against PGlite (embedded Postgres, zero install) behind a single `DATABASE_URL`, then deploy to **Supabase** by swapping that value (use Supabase's **pooled / transaction-mode** connection string on Vercel). Drizzle keeps the schema identical across both.
 
 ### Phase 2: Plan Upload & Periods
 **Goal**: A user can load an approved Excel plan for a given activity + period and trust that, on commit, those plan rows become the authoritative master list of allowed SFIDs — with bad rows surfaced before anything is saved and existing actuals never destroyed by a re-upload.
