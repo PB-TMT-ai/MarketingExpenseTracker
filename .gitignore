@@ -1,0 +1,19 @@
+# Brainstorm visual-companion scratch (not part of the project)
+.superpowers/
+
+# Local env / secrets
+.env
+.env*.local
+
+# Node / Next.js (populated when the app is scaffolded in Phase 1)
+node_modules/
+.next/
+/out/
+
+# Local embedded Postgres (PGlite on-disk data dir) — never commit local DB state
+.pglite/
+.pglite
+
+# TypeScript / Next typegen (auto-generated, regenerated on build)
+*.tsbuildinfo
+next-env.d.ts
