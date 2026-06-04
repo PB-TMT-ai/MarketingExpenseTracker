@@ -93,13 +93,42 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (to be mapped by roadmapper) | — | Pending |
+| ACCESS-01 | Phase 1 — Foundation | Pending |
+| ACCESS-02 | Phase 1 — Foundation | Pending |
+| ACTV-01 | Phase 1 — Foundation | Pending |
+| ACTV-02 | Phase 1 — Foundation | Pending |
+| ACTV-03 | Phase 1 — Foundation | Pending |
+| ACTV-04 | Phase 1 — Foundation | Pending |
+| PRD-01 | Phase 1 — Foundation | Pending |
+| PRD-02 | Phase 1 — Foundation | Pending |
+| COMP-01 | Phase 1 — Foundation | Pending |
+| PLAN-01 | Phase 2 — Plan Upload & Periods | Pending |
+| PLAN-02 | Phase 2 — Plan Upload & Periods | Pending |
+| PLAN-03 | Phase 2 — Plan Upload & Periods | Pending |
+| PLAN-04 | Phase 2 — Plan Upload & Periods | Pending |
+| PLAN-05 | Phase 2 — Plan Upload & Periods | Pending |
+| PLAN-06 | Phase 2 — Plan Upload & Periods | Pending |
+| COMP-02 | Phase 2 — Plan Upload & Periods | Pending |
+| GRID-01 | Phase 3 — Actuals Grid | Pending |
+| GRID-02 | Phase 3 — Actuals Grid | Pending |
+| GRID-03 | Phase 3 — Actuals Grid | Pending |
+| GRID-04 | Phase 3 — Actuals Grid | Pending |
+| GRID-05 | Phase 3 — Actuals Grid | Pending |
+| GRID-06 | Phase 3 — Actuals Grid | Pending |
+| GRID-07 | Phase 3 — Actuals Grid | Pending |
+| GRID-08 | Phase 3 — Actuals Grid | Pending |
+| COMP-03 | Phase 4 — Compliance & Dashboard | Pending |
+| DASH-01 | Phase 4 — Compliance & Dashboard | Pending |
+| DASH-02 | Phase 4 — Compliance & Dashboard | Pending |
+| DASH-03 | Phase 4 — Compliance & Dashboard | Pending |
+| DASH-04 | Phase 4 — Compliance & Dashboard | Pending |
+| EXPT-01 | Phase 5 — Excel Export | Pending |
 
 **Coverage:**
 - v1 requirements: 30 total
-- Mapped to phases: 0 (pending roadmap)
-- Unmapped: 30 ⚠️ (resolved when ROADMAP.md is created)
+- Mapped to phases: 30
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-04*
-*Last updated: 2026-06-04 after initial definition*
+*Last updated: 2026-06-04 after roadmap creation (traceability populated, 30/30 mapped)*
