@@ -17,3 +17,6 @@ node_modules/
 # TypeScript / Next typegen (auto-generated, regenerated on build)
 *.tsbuildinfo
 next-env.d.ts
+
+# Local dev server log (debug scratch)
+.dev.log

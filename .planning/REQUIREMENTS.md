@@ -9,8 +9,8 @@ Requirements for the initial release. Each maps to a roadmap phase.
 
 ### Access
 
-- [ ] **ACCESS-01**: User can unlock the app with a shared password; the session persists via a secure signed cookie until logout/expiry
-- [ ] **ACCESS-02**: All data pages and actions are blocked until the password is entered (no public access on the Vercel URL)
+- [x] **ACCESS-01**: User can unlock the app with a shared password; the session persists via a secure signed cookie until logout/expiry
+- [x] **ACCESS-02**: All data pages and actions are blocked until the password is entered (no public access on the Vercel URL)
 
 ### Activities (config registry)
 
@@ -93,8 +93,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ACCESS-01 | Phase 1 — Foundation | Pending |
-| ACCESS-02 | Phase 1 — Foundation | Pending |
+| ACCESS-01 | Phase 1 — Foundation | Complete |
+| ACCESS-02 | Phase 1 — Foundation | Complete |
 | ACTV-01 | Phase 1 — Foundation | Pending |
 | ACTV-02 | Phase 1 — Foundation | Pending |
 | ACTV-03 | Phase 1 — Foundation | Pending |
