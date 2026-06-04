@@ -9,7 +9,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "tsx lib/db/migrate-cli.ts",
     "db:studio": "drizzle-kit studio",
-    "db:spike": "tsx lib/db/__smoke__/spike.ts"
+    "db:spike": "tsx lib/db/__smoke__/spike.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.1",
@@ -29,6 +30,7 @@
     "drizzle-kit": "0.31.10",
     "tailwindcss": "4.3.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.8"
   }
 }
