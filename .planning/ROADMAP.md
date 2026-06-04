@@ -12,7 +12,7 @@ This roadmap builds an internal plan-vs-actual spend tracker for the JSW marketi
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation** - Activity registry, period-scoped schema with structural off-plan guard, item master, and shared-password gate
+- [x] **Phase 1: Foundation** - Activity registry, period-scoped schema with structural off-plan guard, item master, and shared-password gate (completed 2026-06-04)
 - [ ] **Phase 2: Plan Upload & Periods** - Per-activity Excel plan ingestion that establishes the allowed-SFID master list per period
 - [ ] **Phase 3: Actuals Grid** - Editable spreadsheet-style grid for recording executions, filtering, and POP multi-item entry
 - [ ] **Phase 4: Compliance & Dashboard** - Completeness math and the headline plan-executed / budget-vs-spend dashboard
@@ -101,7 +101,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 1/2 | In Progress|  |
+| 1. Foundation | 2/2 | Complete   | 2026-06-04 |
 | 2. Plan Upload & Periods | 0/TBD | Not started | - |
 | 3. Actuals Grid | 0/TBD | Not started | - |
 | 4. Compliance & Dashboard | 0/TBD | Not started | - |

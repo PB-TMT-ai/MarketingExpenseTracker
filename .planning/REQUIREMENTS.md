@@ -46,7 +46,7 @@ Requirements for the initial release. Each maps to a roadmap phase.
 
 ### Compliance
 
-- [ ] **COMP-01**: The system structurally prevents recording an actual against an SFID not present in the plan (off-plan guard enforced at the database level)
+- [x] **COMP-01**: The system structurally prevents recording an actual against an SFID not present in the plan (off-plan guard enforced at the database level)
 - [ ] **COMP-02**: Off-plan rows from an actuals import are listed so the user can see what was rejected and why
 - [ ] **COMP-03**: System computes "% of plan executed" (completeness) for the active period, per activity and per filter scope
 
@@ -101,7 +101,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | ACTV-04 | Phase 1 — Foundation | Pending |
 | PRD-01 | Phase 1 — Foundation | Pending |
 | PRD-02 | Phase 1 — Foundation | Pending |
-| COMP-01 | Phase 1 — Foundation | Pending |
+| COMP-01 | Phase 1 — Foundation | Complete |
 | PLAN-01 | Phase 2 — Plan Upload & Periods | Pending |
 | PLAN-02 | Phase 2 — Plan Upload & Periods | Pending |
 | PLAN-03 | Phase 2 — Plan Upload & Periods | Pending |
