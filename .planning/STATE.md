@@ -1,3 +1,19 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: planning
+stopped_at: Phase 1 context gathered
+last_updated: "2026-06-04T13:36:17.203Z"
+last_activity: 2026-06-04 — Roadmap created (5 phases, coarse granularity), 30/30 requirements mapped
+progress:
+  total_phases: 5
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
+---
+
 # Project State
 
 ## Project Reference
@@ -19,6 +35,7 @@ Progress: [░░░░░░░░░░] 0%
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0
 - Average duration: — min
 - Total execution time: 0.0 hours
@@ -30,6 +47,7 @@ Progress: [░░░░░░░░░░] 0%
 | - | - | - | - |
 
 **Recent Trend:**
+
 - Last 5 plans: —
 - Trend: —
 
@@ -56,6 +74,7 @@ None yet.
 [Issues that affect future work]
 
 Open questions to resolve in the relevant phase's discuss step (NOT blockers for planning):
+
 - [Phase 1] Plan-row grain for multi-unit activities — multi-unit is confirmed YES; the UNIQUE match key and whether executions are unique per plan row must reflect this before migrations lock.
 - [Phase 2] Non-destructive re-upload semantics (append/upsert/replace; policy for a removed plan row that already has actuals).
 - [Phase 4] Exact completeness math for partial / in-progress actuals.
@@ -71,6 +90,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-04 18:21
-Stopped at: ROADMAP.md and STATE.md created; REQUIREMENTS.md traceability updated (30/30 mapped)
-Resume file: None
+Last session: 2026-06-04T13:36:17.174Z
+Stopped at: Phase 1 context gathered
+Resume file: .planning/phases/01-foundation/01-CONTEXT.md
