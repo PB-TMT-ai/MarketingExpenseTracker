@@ -26,9 +26,14 @@ export default defineConfig({
     video: "off",
   },
   webServer: {
-    command: "npm run dev",
+    // Wipe .pglite/ BEFORE `next dev` launches so PGlite's WASM FS and the on-disk
+    // data dir start aligned. instrumentation.ts then re-migrates into the fresh dir
+    // on first request. Doing the wipe inside the same shell as `next dev` makes the
+    // ordering deterministic (no race with Turbopack's lazy module loading).
+    command:
+      "node -e \"require('fs').rmSync('.pglite',{recursive:true,force:true});require('fs').mkdirSync('.pglite',{recursive:true})\" && npm run dev",
     url: "http://localhost:3000/login",
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     timeout: 120_000,
     stdout: "pipe",
     stderr: "pipe",

@@ -86,3 +86,12 @@ export async function setActivePeriod(
   revalidatePath("/");
   return { ok: true };
 }
+
+/**
+ * `<form action={...}>` expects `(FormData) => void`, not the useActionState shape.
+ * This wrapper lets the period switcher + the "Make active" buttons post directly
+ * without dragging useActionState into Server Components.
+ */
+export async function setActivePeriodForm(formData: FormData): Promise<void> {
+  await setActivePeriod({}, formData);
+}

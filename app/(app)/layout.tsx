@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 import { logout } from "@/lib/actions/auth";
+import PeriodSwitcher from "./period-switcher";
 
 /**
  * Protected app shell for the `(app)` route group.
@@ -24,21 +26,33 @@ export default async function AppLayout({
     <div className="min-h-screen">
       <header className="flex items-center justify-between border-b border-neutral-200 bg-white px-6 py-3">
         <div className="flex items-center gap-4">
-          <span className="font-semibold">Marketing Expense Tracker</span>
-          {/* Period switcher mounts here in a later Phase-1 plan. */}
-          <span
-            data-slot="period-switcher"
-            className="text-sm text-neutral-400"
-          />
+          <Link href="/" className="font-semibold">
+            Marketing Expense Tracker
+          </Link>
+          <PeriodSwitcher />
         </div>
-        <form action={logout}>
-          <button
-            type="submit"
-            className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-50"
+        <nav className="flex items-center gap-2 text-sm">
+          <Link
+            href="/periods"
+            className="rounded-md border border-neutral-200 px-3 py-1.5 hover:bg-neutral-50"
           >
-            Log out
-          </button>
-        </form>
+            Periods
+          </Link>
+          <Link
+            href="/items"
+            className="rounded-md border border-neutral-200 px-3 py-1.5 hover:bg-neutral-50"
+          >
+            Items
+          </Link>
+          <form action={logout}>
+            <button
+              type="submit"
+              className="rounded-md border border-neutral-300 px-3 py-1.5 hover:bg-neutral-50"
+            >
+              Log out
+            </button>
+          </form>
+        </nav>
       </header>
       <main className="p-6">{children}</main>
     </div>
