@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import * as XLSX from "xlsx";
-import { readWorkbook, coerceCell } from "./parse";
+import { readWorkbook, coerceCell, _extractFirstSheetRows } from "./parse";
 import type { FieldDef } from "../activities/types";
 
 /**
@@ -79,10 +79,22 @@ describe("readWorkbook", () => {
     expect(rows.map((r) => r[0])).toEqual(["SFID", "111", "222"]);
   });
 
-  it("throws when the workbook has zero sheets", () => {
-    const wb = XLSX.utils.book_new();
-    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
-    expect(() => readWorkbook(buf)).toThrow();
+  it("_extractFirstSheetRows throws when the workbook has zero sheets", () => {
+    // SheetJS's own read() leniently returns a "Sheet1" for any buffer, so the
+    // zero-sheets branch is exercised via the internal helper against a
+    // hand-built malformed workbook. This guard is the last line of defense
+    // for corrupt input that somehow parses without throwing.
+    expect(() =>
+      _extractFirstSheetRows({ SheetNames: [], Sheets: {} }),
+    ).toThrow(/no sheets/i);
+  });
+
+  it("_extractFirstSheetRows throws when SheetNames[0] points at a missing sheet", () => {
+    // Belt-and-braces: even if SheetNames is non-empty but the named sheet is
+    // absent from .Sheets (a malformed export), we throw rather than crash.
+    expect(() =>
+      _extractFirstSheetRows({ SheetNames: ["Ghost"], Sheets: {} }),
+    ).toThrow(/no sheets/i);
   });
 });
 
