@@ -42,11 +42,18 @@ export type BlockedDealer = {
 };
 
 /**
- * Type alias for the transactional handle Drizzle passes into `db.transaction(async tx => ...)`.
- * Using the outer `db` type is intentional: PGlite + postgres-js share the same query API
- * surface, and we never want a helper here to escape the caller's transaction.
+ * Type alias for either the outer `db` instance OR the transactional handle Drizzle
+ * passes into `db.transaction(async tx => ...)`. The transaction handle is a
+ * `PgTransaction<...>` which lacks `$client` and therefore is NOT assignable to
+ * `typeof db` directly — we extract its shape from the callback parameter so the
+ * helpers compile uniformly whether called with `db` or `tx`.
+ *
+ * Discipline: bulkInsertPlanRows / updatePlanRow / deletePlanRows are typically called
+ * with `tx`; listByPeriodActivity / queryBlockedDealers may be called with either.
+ * Either way the helper never opens its own `db.transaction(...)`.
  */
-type DbOrTx = typeof db;
+type TxHandle = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type DbOrTx = typeof db | TxHandle;
 
 /** List every plan_row for (periodId, activity). Mirrors `listPeriods` shape-wise. */
 export async function listByPeriodActivity(
