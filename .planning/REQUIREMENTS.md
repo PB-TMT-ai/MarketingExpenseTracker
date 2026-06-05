@@ -29,9 +29,9 @@ Requirements for the initial release. Each maps to a roadmap phase.
 - [ ] **PLAN-01**: User can download an Excel template for a selected activity, pre-filled with the exact expected headers
 - [ ] **PLAN-02**: User can upload an `.xlsx` plan for an activity + period; headers are validated against the activity config before anything is saved
 - [ ] **PLAN-03**: Upload shows a preview with per-row results (valid / duplicate SFID / error) before the user commits
-- [ ] **PLAN-04**: On commit, plan rows become the master list of allowed SFIDs for that activity + period
-- [ ] **PLAN-05**: Plan rows capture shared who/where fields (Region, State, District, Taluka, Distributor, Dealer) plus activity-specific plan fields, including planned cost/budget
-- [ ] **PLAN-06**: Re-uploading a plan for a period that already has actuals is non-destructive — existing executions are preserved (merge/reconcile, with a warning)
+- [x] **PLAN-04**: On commit, plan rows become the master list of allowed SFIDs for that activity + period
+- [x] **PLAN-05**: Plan rows capture shared who/where fields (Region, State, District, Taluka, Distributor, Dealer) plus activity-specific plan fields, including planned cost/budget
+- [x] **PLAN-06**: Re-uploading a plan for a period that already has actuals is non-destructive — existing executions are preserved (merge/reconcile, with a warning)
 
 ### Actuals Grid
 
@@ -105,9 +105,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PLAN-01 | Phase 2 — Plan Upload & Periods | Pending |
 | PLAN-02 | Phase 2 — Plan Upload & Periods | Pending |
 | PLAN-03 | Phase 2 — Plan Upload & Periods | Pending |
-| PLAN-04 | Phase 2 — Plan Upload & Periods | Pending |
-| PLAN-05 | Phase 2 — Plan Upload & Periods | Pending |
-| PLAN-06 | Phase 2 — Plan Upload & Periods | Pending |
+| PLAN-04 | Phase 2 — Plan Upload & Periods | Complete |
+| PLAN-05 | Phase 2 — Plan Upload & Periods | Complete |
+| PLAN-06 | Phase 2 — Plan Upload & Periods | Complete |
 | COMP-02 | Phase 2 — Plan Upload & Periods | Pending |
 | GRID-01 | Phase 3 — Actuals Grid | Pending |
 | GRID-02 | Phase 3 — Actuals Grid | Pending |
