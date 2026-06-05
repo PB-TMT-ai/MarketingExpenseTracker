@@ -1,58 +1,70 @@
 ---
 phase: 01-foundation
-status: gaps_found
-score: 3/9 requirements met (success criteria: 3/6)
+status: passed
+score: 9/9 requirements met (success criteria: 6/6)
 verified: 2026-06-05
-method: goal-backward against the live codebase (build + vitest + generated SQL + live smoke); authored from direct code inspection after the verifier subagent run was truncated
-requirements_met: [ACCESS-01, ACCESS-02, COMP-01]
-requirements_unmet: [ACTV-01, ACTV-02, ACTV-03, ACTV-04, PRD-01, PRD-02]
+method: build + 25/25 vitest + 9/9 Playwright + 4 live-DB smokes + structural-invariant DB inspection; authored from direct code inspection across all five plans
+requirements_met: [ACCESS-01, ACCESS-02, ACTV-01, ACTV-02, ACTV-03, ACTV-04, PRD-01, PRD-02, COMP-01]
+requirements_unmet: []
+review_2_status: issues-found (2 High + 4 Medium + 5 Low; both Highs fixed in commit 67697e0)
 ---
 
-# Phase 1: Foundation — Verification
+# Phase 1: Foundation — Verification (Final)
 
-**Verdict: GAPS FOUND.** The two executed plans (01-01 walking skeleton, 01-02 schema) deliver a solid, locally-runnable, gated foundation with a structural off-plan guard — but only 3 of the phase's 9 requirements. The activity config registry (ACTV-01..04) and period/item-master management (PRD-01, PRD-02) were never planned into an executable plan, so the phase goal is not yet fully achieved.
+**Verdict: PASSED.** All 9 phase requirements are met with shipped code, build green, four live-DB invariants proven, end-to-end browser flows green, and the two High-severity findings from the second code review fixed (one of them upgraded D-11 from an app-level rule to a DB-level structural invariant).
 
 ## Requirement Verdicts
 
 | ID | Verdict | Evidence |
 |----|---------|----------|
-| ACCESS-01 | ✅ MET | `lib/auth/session.ts` mints/verifies a jose HS256 signed cookie; `lib/actions/auth.ts` sets it on correct password (sliding 30-day, refreshed in `proxy.ts`) and `logout` clears it. Human-verified at the checkpoint; `npm run test` 3/3. |
-| ACCESS-02 | ✅ MET | `proxy.ts` gate (registered by Next as `ƒ Proxy`) blocks every route except `/login` + static; `app/(app)/layout.tsx` re-verifies per render (defense-in-depth). HTTP-verified: `GET /` no cookie → 307 `/login`; forged cookie → 307 `/login`. |
-| ACTV-01 | ❌ UNMET | No activity config registry exists. `lib/activities/` is absent; `plan_rows.activity` is a free `text` discriminator with no typed definition of the six activities. |
-| ACTV-02 | ❌ UNMET | No per-activity plan/actual column config (type measurement / item-list / status). Nothing for the grid/import/export to read. |
-| ACTV-03 | ❌ UNMET | No config-driven extensibility — there is no registry to add a 7th activity to. |
-| ACTV-04 | ❌ UNMET | `item_master` TABLE exists and migrated, but there is NO UI or Server Action to manage the selectable item list. A table alone does not satisfy "user can manage the item master." |
-| PRD-01 | ❌ UNMET | `periods` table + `period_type` enum exist, but there is NO create-period / mark-active Server Action or UI. The "exactly one active period" rule (D-11) is unimplemented. |
-| PRD-02 | ❌ UNMET | Schema scopes `plan_rows` by `period_id` (DB foundation present), but no period selector / app-layer scoping ("selecting a period shows only that period's data") is built. |
-| COMP-01 | ✅ MET | Structural off-plan guard proven: `drizzle/0000_*.sql` shows `executions.plan_row_id` NOT NULL FK `ON DELETE restrict`, **no `sfid` on executions**, composite `UNIQUE(period_id, activity, sfid)`, numeric(14,2) money, no CASCADE/GENERATED. `__smoke__/tables.ts` confirms all five tables live (exit 0). |
+| ACCESS-01 | ✅ MET | jose HS256 signed cookie minted on correct password (`lib/actions/auth.ts`); 30-day sliding window REAL (proxy.ts refreshes per request via `sessionCookieOptions`); Playwright login spec green; logout clears the cookie. |
+| ACCESS-02 | ✅ MET | `proxy.ts` gates every route except `/login` + static; `(app)` layout re-verifies per render (defense-in-depth); HTTP-verified `GET / no cookie → 307 /login`. |
+| ACTV-01 | ✅ MET | All six activities exist as config entries under `lib/activities/`: counter-wall, gsb, nlb, in-shop, pop-dealer-kit, dealer-certificate. `ACTIVITY_KEYS.length === 6` (vitest). |
+| ACTV-02 | ✅ MET | Each `ActivityConfig` declares `planColumns` + `actualColumns` (FieldDef[]) and a `type` discriminator (measurement / item-list / status). Shared who/where columns flagged `shared: true` (vitest covers this). |
+| ACTV-03 | ✅ MET | `activities:smoke` exit 0 — a synthetic 7th activity resolves purely via record-spread `{ ...ACTIVITIES, 'x': seventh }` with `registry.ts` byte-identical. ACTV-03 PROVEN. |
+| ACTV-04 | ✅ MET | `/items` page (`app/(app)/items/page.tsx`) + add form + retire/restore buttons posting to Zod-validated, auth-rechecked Server Actions (`lib/actions/items.ts`). `items:smoke` exit 0 — D-09 PROVEN (no DELETE path; row survives retire). |
+| PRD-01 | ✅ MET | `/periods` page + create form (`useActionState`); `createPeriod` accepts type/label/dates with `endDate >= startDate` refine; "make active" toggles via `setActiveTx`. Playwright `creates a period (makeActive)` green. |
+| PRD-02 | ✅ MET | `lib/periods/active.ts` exports `getActivePeriod()` — the server-side scoping seam Phase 2+ filters reads on. PeriodSwitcher mounted in the (app) layout's reserved `data-slot="period-switcher"`; selecting a period sets active via Server Action and the page re-renders. |
+| COMP-01 | ✅ MET | Off-plan guard structural: `executions.plan_row_id` NOT NULL FK `ON DELETE restrict`, NO `sfid` column on executions; `plan_rows` composite `UNIQUE(period_id, activity, sfid)`. `__smoke__/tables.ts` confirms all five tables live. |
 
 ## Success-Criterion Verdicts (ROADMAP Phase 1)
 
 | # | Criterion | Verdict |
 |---|-----------|---------|
-| 1 | Correct password → persistent signed-cookie session; otherwise every page/action blocked | ✅ MET |
-| 2 | Six activities as config entries (type measurement/item-list/status); a 7th by config alone | ❌ UNMET |
-| 3 | Create a period (month/quarter/FY), mark active, all data scoped to a period | ❌ UNMET (schema only) |
-| 4 | DB makes it structurally impossible to attach an actual to an unplanned SFID | ✅ MET |
-| 5 | Manage the selectable item master for POP / dealer-kit | ❌ UNMET (table only) |
-| 6 | Runs fully locally on PGlite; Supabase via `DATABASE_URL` swap | ✅ MET |
+| 1 | Shared-password session; everything else blocked | ✅ MET |
+| 2 | Six activities as config; 7th by config alone | ✅ MET (ACTV-03 smoke) |
+| 3 | Create + mark active period; data scoped to a period | ✅ MET (PRD-01/02; D-11 STRUCTURAL via partial unique index) |
+| 4 | DB structurally rejects unplanned-SFID actuals | ✅ MET (COMP-01) |
+| 5 | Manage item master (no hard delete) | ✅ MET (D-09 STRUCTURAL — no delete API exists; smoke proves row survives retire) |
+| 6 | Runs fully locally on PGlite; cloud is `DATABASE_URL` swap | ✅ MET |
 
-## What IS solid (built + verified)
-- Locally-runnable Next 16 app on PGlite (`npm run dev`), proven `SELECT 1` round-trip
-- Shared-password gate: jose signed cookie, constant-time password check, proxy gate + per-render re-verification, sliding expiry, boot-time secret assertion
-- Period-scoped schema with the off-plan guard as a database invariant (COMP-01)
-- One migration source applied identically to PGlite (and, by config, Supabase)
+## Live-DB Invariants Proven
 
-## Gaps → Closing Actions
+| Invariant | Source | Proof | Exit |
+|-----------|--------|-------|------|
+| Live PGlite round-trip | `db:spike` | `dbSpike() => {"ok":true,"value":1}` | 0 |
+| 7th activity by config alone (ACTV-03) | `activities:smoke` | "six known activities resolve; synthetic seventh resolves by spread; registry.ts unchanged" | 0 |
+| D-11 single active period | `periods:smoke` | "exactly one active period (id=N) after two distinct setActiveTx calls" | 0 |
+| D-11 — concurrent safety (NEW, post-HI-01 fix) | `pg_indexes` inspection + direct UPDATE attempt | `periods_single_active_idx` exists; direct `UPDATE … SET is_active=true` on a 2nd row is **rejected by the DB** | — |
+| D-09 soft-retire | `items:smoke` | "retire is a soft toggle (active=false), restore flips it back; row count UNCHANGED; no DELETE path" | 0 |
 
-All six gaps are app-layer features on top of the existing schema/registry seams. Recommended gap-closure plans (`/gsd:plan-phase 1 --gaps`):
+## Automated Test Coverage
 
-1. **Activity config registry (ACTV-01, ACTV-02, ACTV-03)** — a typed `lib/activities/` registry defining all six activities (Counter Wall Painting, GSB, NLB, In-shop Branding, POP/Dealer Kit, Dealer Certificate), each declaring its plan columns, actual columns, and type (measurement / item-list / status). Extensible by adding one config entry. This is the SKELETON's "activities defined as config" decision, not yet built.
-2. **Period management (PRD-01, PRD-02)** — a Server Action + minimal UI to create a period (month/quarter/FY) and mark exactly one active (enforce D-11), plus a period selector in the `(app)` shell's reserved slot that scopes data.
-3. **Item-master management (ACTV-04)** — a Server Action + minimal UI to add/retire `item_master` entries (toggle the `active` flag; no hard delete, D-09).
+- **vitest:** 25 specs, 4 files, **25/25 green** — session, registry, periods (db + action layers with mocks for next/headers/cache), items (db + action layers).
+- **Playwright (Chromium):** 9 specs, 3 files, **9/9 green** — login (3), periods (3), items (3).
+- **Build:** `npm run build` clean; routes registered: `/`, `/login`, `/periods`, `/items`, `ƒ Proxy (Middleware)`.
 
-## Code Review
-See `01-REVIEW.md` (status: issues-found). The 2 High + 1 Medium items (HI-01 boot/secret failure mode, HI-02 sliding-expiry mismatch, ME-01 Supabase SSL doc) were fixed in commit `8ad9e11`. Remaining Low items are advisory.
+## Code-Review Status
+
+- **Review 1** (pre-gap closure, `01-REVIEW.md`): all High + Medium fixed in commit `8ad9e11` (auth boot assertion, sliding expiry, Supabase SSL doc).
+- **Review 2** (post-gap closure, `01-REVIEW-2.md`): 2 High + 4 Medium + 5 Low. **Both Highs fixed in commit `67697e0`:**
+  - **HI-01 (D-11 race):** `setActiveTx` was not race-safe under READ COMMITTED. Fix elevates D-11 from an app-level transactional rule to a **structural DB invariant** via a partial unique index (`periods_single_active_idx ON ((1)) WHERE is_active = true`). Now matches the off-plan-guard philosophy: prefer structural over policy.
+  - **HI-02 (sliding-cookie 500 cascade):** the new `proxy.ts` sliding refresh called `mintSession()` unguarded — a runtime `SESSION_SECRET` problem would 500 every authenticated request. Wrapped in try/catch; instrumentation's boot assertion remains the primary defense.
+- **Medium/Low** items in REVIEW-2 are advisory and worth picking up early in Phase 2 (form CSRF nuance, etc.).
+
+## Gaps → None
+
+All previously-flagged gaps (ACTV-01..04, PRD-01/02) are closed by plans 01-03, 01-04, 01-05. No new gaps surfaced.
 
 ---
-*Phase 01-foundation — verification: gaps_found (3/9). Do not mark complete until gap-closure plans land ACTV-01..04 and PRD-01/02.*
+*Phase 01-foundation — verification: PASSED (9/9 requirements, 6/6 success criteria). Ready to close.*
