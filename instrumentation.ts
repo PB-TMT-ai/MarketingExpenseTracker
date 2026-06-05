@@ -8,6 +8,9 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // Fail fast & loud if APP_PASSWORD / SESSION_SECRET are missing or weak, before serving.
+    const { assertAuthEnv } = await import("./lib/auth/env");
+    assertAuthEnv();
     const { ensureMigrated } = await import("./lib/db/migrate");
     await ensureMigrated();
   }

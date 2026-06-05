@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { verifyPassword } from "../auth/password";
-import { mintSession, SESSION_COOKIE, SESSION_MAX_AGE } from "../auth/session";
+import { mintSession, sessionCookieOptions, SESSION_COOKIE } from "../auth/session";
 
 const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
@@ -29,17 +29,16 @@ export async function login(
     return { error: "Incorrect password" };
   }
 
-  const jar = await cookies(); // Next 16: cookies() is async (Pitfall 4)
-  jar.set(SESSION_COOKIE, await mintSession(), {
-    httpOnly: true,
-    // Secure only in production: on http://localhost a `Secure` cookie is silently
-    // dropped by the browser, which would make local-first login impossible. Vercel
-    // serves the deployed app over HTTPS, where NODE_ENV === "production".
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_MAX_AGE,
-  });
+  try {
+    const jar = await cookies(); // Next 16: cookies() is async (Pitfall 4)
+    jar.set(SESSION_COOKIE, await mintSession(), sessionCookieOptions());
+  } catch {
+    // e.g. SESSION_SECRET missing/too short — return a controlled error instead of a raw
+    // 500 on a *correct* password. instrumentation.ts also asserts these at boot (fail fast).
+    return {
+      error: "Server authentication is misconfigured. Please contact the administrator.",
+    };
+  }
   return { ok: true };
 }
 

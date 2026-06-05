@@ -1,5 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, verifySession } from "./lib/auth/session";
+import {
+  SESSION_COOKIE,
+  mintSession,
+  sessionCookieOptions,
+  verifySession,
+} from "./lib/auth/session";
 
 /**
  * Route gate — Next 16 `proxy.ts` (the Node-runtime successor to `middleware.ts`).
@@ -19,7 +24,10 @@ export default async function proxy(req: NextRequest) {
 
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   if (token && (await verifySession(token))) {
-    return NextResponse.next();
+    // Sliding 30-day window (D-13): refresh the cookie's expiry on each authenticated request.
+    const res = NextResponse.next();
+    res.cookies.set(SESSION_COOKIE, await mintSession(), sessionCookieOptions());
+    return res;
   }
 
   const loginUrl = req.nextUrl.clone();

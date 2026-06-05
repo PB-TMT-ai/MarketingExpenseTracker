@@ -11,6 +11,21 @@ import { SignJWT, jwtVerify } from "jose";
 export const SESSION_COOKIE = "session";
 export const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 days, in seconds
 
+/**
+ * Cookie options shared by the login action (sets the cookie) and proxy.ts (refreshes it on
+ * each authenticated request → the sliding window). Single source of truth so the flags never
+ * drift. Secure is gated on production so http://localhost login works locally.
+ */
+export function sessionCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: SESSION_MAX_AGE,
+  };
+}
+
 /** Read the signing secret lazily so importing this module never throws at load time. */
 function getSecret(): Uint8Array {
   const secret = process.env.SESSION_SECRET;
