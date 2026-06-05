@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "periods_single_active_idx" ON "periods" USING btree (((1))) WHERE "periods"."is_active" = true;

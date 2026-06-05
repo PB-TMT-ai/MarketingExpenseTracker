@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   pgEnum,
@@ -11,6 +12,7 @@ import {
   integer,
   jsonb,
   unique,
+  uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
 
@@ -30,16 +32,31 @@ import {
 
 export const periodType = pgEnum("period_type", ["month", "quarter", "fy"]);
 
-export const periods = pgTable("periods", {
-  id: bigserial("id", { mode: "number" }).primaryKey(),
-  type: periodType("type").notNull(),
-  label: text("label").notNull(),
-  startDate: date("start_date").notNull(),
-  endDate: date("end_date").notNull(),
-  // Exactly one active period is enforced app-side (D-11).
-  isActive: boolean("is_active").notNull().default(false),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const periods = pgTable(
+  "periods",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    type: periodType("type").notNull(),
+    label: text("label").notNull(),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date").notNull(),
+    // D-11: EXACTLY one row may have is_active=true. Enforced structurally by the
+    // partial unique index below — concurrent setActiveTx calls cannot both win.
+    isActive: boolean("is_active").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // Partial unique index on a constant expression, filtered to active rows.
+    // Postgres allows at most one row to satisfy `is_active = true` per this index,
+    // so the "two active periods" race becomes a DB-level uniqueness violation rather
+    // than a silently-wrong row count.
+    uniqueIndex("periods_single_active_idx")
+      .on(sql`((1))`)
+      .where(sql`${t.isActive} = true`),
+  ],
+);
 
 export const planRows = pgTable(
   "plan_rows",

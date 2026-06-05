@@ -24,9 +24,17 @@ export default async function proxy(req: NextRequest) {
 
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   if (token && (await verifySession(token))) {
-    // Sliding 30-day window (D-13): refresh the cookie's expiry on each authenticated request.
+    // Sliding 30-day window (D-13): refresh the cookie's expiry on each authenticated
+    // request. mintSession() throws if SESSION_SECRET is missing or too short at runtime
+    // (env rotation gone wrong) — let the request through without refreshing rather than
+    // 500-ing every authenticated page navigation. instrumentation.ts asserts the env
+    // var at boot, so this catch is the second line of defense.
     const res = NextResponse.next();
-    res.cookies.set(SESSION_COOKIE, await mintSession(), sessionCookieOptions());
+    try {
+      res.cookies.set(SESSION_COOKIE, await mintSession(), sessionCookieOptions());
+    } catch {
+      // Stale cookie keeps the user logged in until expiry; admin sees the boot-time error.
+    }
     return res;
   }
 

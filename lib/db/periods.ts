@@ -55,9 +55,12 @@ export async function getActivePeriodRow(): Promise<PeriodRow | null> {
 }
 
 /**
- * D-11: leaves EXACTLY ONE row with is_active=true, transactionally. The clear-all then
- * set-one order is correct under MVCC — a concurrent reader sees either the pre-state
- * (zero or one active) or the post-state (exactly one active), never two.
+ * D-11: leaves EXACTLY ONE row with is_active=true.
+ *
+ * The "exactly one" rule is structural — `periods_single_active_idx` (a partial UNIQUE
+ * INDEX in the schema) makes "two active rows" a DB-level unique-violation, so even two
+ * concurrent setActiveTx calls cannot both win. The transaction here guarantees atomicity
+ * (clear-all then set-one); the partial index guarantees concurrent correctness.
  */
 export async function setActiveTx(id: number): Promise<void> {
   await db.transaction(async (tx) => {
