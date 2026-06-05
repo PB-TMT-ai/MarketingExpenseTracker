@@ -106,7 +106,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 2/5 | Gap closure (3/9 reqs) | - |
+| 1. Foundation | 2/5 | In Progress|  |
 | 2. Plan Upload & Periods | 0/TBD | Not started | - |
 | 3. Actuals Grid | 0/TBD | Not started | - |
 | 4. Compliance & Dashboard | 0/TBD | Not started | - |
