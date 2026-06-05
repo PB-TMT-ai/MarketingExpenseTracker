@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: ready_to_plan
-stopped_at: Phase 02 CONTEXT complete (D2-01..06 locked) — ready to plan Phase 2
-last_updated: 2026-06-05T07:39:00.000Z
+status: ready_to_execute
+stopped_at: Phase 02 plans verified (PASS / HIGH) — 3 plans across 3 waves
+last_updated: 2026-06-05T08:17:00.000Z
 last_activity: 2026-06-05
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 5
+  total_plans: 8
   completed_plans: 5
   percent: 20
 ---
@@ -26,9 +26,14 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 ## Current Position
 
 Phase: 2
-Plan: Not started
-Status: Ready to plan
+Plan: 02-01 (wave 1) ready
+Status: Ready to execute
 Last activity: 2026-06-05
+
+Wave structure:
+- Wave 1: 02-01 (Excel I/O pure layer)
+- Wave 2: 02-02 (commitPlanUpload action + DB + smoke; depends on 02-01)
+- Wave 3: 02-03 (Plans UI + template download + E2E; depends on 02-01, 02-02)
 
 Progress: [██████████] 100%
 
