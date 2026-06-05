@@ -248,6 +248,47 @@ export async function _resetExecutionsForTest(): Promise<void> {
 }
 
 /**
+ * Test/e2e helper — seed ONE execution row against a plan_row id, so the e2e
+ * suite can drive the FK-restrict path without Phase 3's actuals UI (which doesn't
+ * exist yet). Inserts a row with status='Pending' and a deterministic unitNo. The
+ * caller is responsible for ensuring `planRowId` references a real plan_row.
+ *
+ * NEVER call from app code. Used only by lib/db/__smoke__/* and the test-only
+ * Route Handler /api/test/seed-execution (which is gated on NODE_ENV !== production).
+ */
+export async function _seedExecutionForTest(planRowId: number): Promise<void> {
+  await db.execute(
+    sql`insert into executions (plan_row_id, status, unit_no) values (${planRowId}, 'Pending', 'e2e-seed-1')`,
+  );
+}
+
+/**
+ * Test/e2e helper — fetch the plan_row id for (periodId, activity, sfid). Used by the
+ * test-only Route Handler so the e2e can seed an execution by SFID (the only identifier
+ * the test owns; the integer plan_row id is opaque). Returns null if no match.
+ *
+ * NEVER call from app code.
+ */
+export async function _findPlanRowIdForTest(
+  periodId: number,
+  activity: string,
+  sfid: string,
+): Promise<number | null> {
+  const [row] = await db
+    .select({ id: planRows.id })
+    .from(planRows)
+    .where(
+      and(
+        eq(planRows.periodId, periodId),
+        eq(planRows.activity, activity),
+        eq(planRows.sfid, sfid),
+      ),
+    )
+    .limit(1);
+  return row ? Number(row.id) : null;
+}
+
+/**
  * Test/smoke helper — wipes the plan_rows table. Call `_resetExecutionsForTest()` first.
  * NEVER call from app code (the off-plan guard depends on plan_rows referencing real
  * periods; truncating would orphan downstream data).
