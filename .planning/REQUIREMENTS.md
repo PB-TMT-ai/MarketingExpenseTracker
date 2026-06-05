@@ -26,9 +26,9 @@ Requirements for the initial release. Each maps to a roadmap phase.
 
 ### Plan Upload
 
-- [ ] **PLAN-01**: User can download an Excel template for a selected activity, pre-filled with the exact expected headers
-- [ ] **PLAN-02**: User can upload an `.xlsx` plan for an activity + period; headers are validated against the activity config before anything is saved
-- [ ] **PLAN-03**: Upload shows a preview with per-row results (valid / duplicate SFID / error) before the user commits
+- [x] **PLAN-01**: User can download an Excel template for a selected activity, pre-filled with the exact expected headers
+- [x] **PLAN-02**: User can upload an `.xlsx` plan for an activity + period; headers are validated against the activity config before anything is saved
+- [x] **PLAN-03**: Upload shows a preview with per-row results (valid / duplicate SFID / error) before the user commits
 - [x] **PLAN-04**: On commit, plan rows become the master list of allowed SFIDs for that activity + period
 - [x] **PLAN-05**: Plan rows capture shared who/where fields (Region, State, District, Taluka, Distributor, Dealer) plus activity-specific plan fields, including planned cost/budget
 - [x] **PLAN-06**: Re-uploading a plan for a period that already has actuals is non-destructive — existing executions are preserved (merge/reconcile, with a warning)
@@ -47,7 +47,7 @@ Requirements for the initial release. Each maps to a roadmap phase.
 ### Compliance
 
 - [x] **COMP-01**: The system structurally prevents recording an actual against an SFID not present in the plan (off-plan guard enforced at the database level)
-- [ ] **COMP-02**: Off-plan rows from an actuals import are listed so the user can see what was rejected and why
+- [x] **COMP-02**: Off-plan rows from an actuals import are listed so the user can see what was rejected and why
 - [ ] **COMP-03**: System computes "% of plan executed" (completeness) for the active period, per activity and per filter scope
 
 ### Dashboard
@@ -102,13 +102,13 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PRD-01 | Phase 1 — Foundation | Complete |
 | PRD-02 | Phase 1 — Foundation | Complete |
 | COMP-01 | Phase 1 — Foundation | Complete |
-| PLAN-01 | Phase 2 — Plan Upload & Periods | Pending |
-| PLAN-02 | Phase 2 — Plan Upload & Periods | Pending |
-| PLAN-03 | Phase 2 — Plan Upload & Periods | Pending |
+| PLAN-01 | Phase 2 — Plan Upload & Periods | Complete |
+| PLAN-02 | Phase 2 — Plan Upload & Periods | Complete |
+| PLAN-03 | Phase 2 — Plan Upload & Periods | Complete |
 | PLAN-04 | Phase 2 — Plan Upload & Periods | Complete |
 | PLAN-05 | Phase 2 — Plan Upload & Periods | Complete |
 | PLAN-06 | Phase 2 — Plan Upload & Periods | Complete |
-| COMP-02 | Phase 2 — Plan Upload & Periods | Pending |
+| COMP-02 | Phase 2 — Plan Upload & Periods | Complete |
 | GRID-01 | Phase 3 — Actuals Grid | Pending |
 | GRID-02 | Phase 3 — Actuals Grid | Pending |
 | GRID-03 | Phase 3 — Actuals Grid | Pending |

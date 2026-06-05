@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Phase 02-02 complete (commitPlanUpload + plan_rows DB + Zod re-check + D2-01 live PGlite smoke; 82/82 vitest; smoke green)
-last_updated: "2026-06-05T10:45:00.000Z"
+stopped_at: Phase 02 complete — 02-03 ships Plans UI + E2E (happy + blocked-by-actuals); 82/82 vitest + 11/11 Playwright; D2-06 + COMP-02 user-facing both proven
+last_updated: "2026-06-05T16:45:00.000Z"
 last_activity: 2026-06-05
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 8
-  completed_plans: 7
-  percent: 88
+  completed_plans: 8
+  percent: 40
 ---
 
 # Project State
@@ -25,32 +25,33 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 
 ## Current Position
 
-Phase: 2
-Plan: 02-03 (wave 3) ready
-Status: 02-01 + 02-02 complete; 02-03 next
+Phase: 2 (complete)
+Plan: 02-03 DONE
+Status: Phase 2 complete — Plans UI + E2E shipped; ready for Phase 3 (Actuals grid)
 Last activity: 2026-06-05
 
 Wave structure:
 
 - Wave 1: 02-01 (Excel I/O pure layer) — DONE
 - Wave 2: 02-02 (commitPlanUpload action + DB + smoke; depends on 02-01) — DONE
-- Wave 3: 02-03 (Plans UI + template download + E2E; depends on 02-01, 02-02)
+- Wave 3: 02-03 (Plans UI + template download + E2E; depends on 02-01, 02-02) — DONE
 
-Progress: [█████████░] 88%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 5
-- Average duration: — min
-- Total execution time: 0.0 hours
+- Total plans completed: 8
+- Average duration: ~30 min
+- Total execution time: 4.1 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01 | 5 | - | - |
+| 01 | 5 | 145 min | 29 min |
+| 02 | 3 | 100 min | 33 min |
 
 **Recent Trend:**
 
@@ -65,6 +66,7 @@ Progress: [█████████░] 88%
 | Phase 01 P05 | 30 min | 3 tasks | 7 files |
 | Phase 02 P01 | 25 min | 3 tasks | 9 files |
 | Phase 02 P02 | 30 min | 3 tasks | 5 files |
+| Phase 02 P03 | 45 | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -81,6 +83,9 @@ Recent decisions affecting current work:
 - [02-02]: commitPlanUpload uses isFkRestrictError checking BOTH SQLSTATE 23001 (restrict_violation) AND 23503 (foreign_key_violation), duck-typed on err.cause?.code ?? err.code for cross-driver compat (PGlite obfuscates DatabaseError class).
 - [02-02]: PLAN_ROW_SCHEMAS built ONCE at module load from ACTIVITIES — NOT z.discriminatedUnion, preserving ACTV-03 (7th activity = registry-only change).
 - [02-02]: D2-01 invariant proven via live PGlite smoke (plan-upload:smoke). FK RESTRICT fires on removal of SFID with executions, rollback wipes ALL pending writes (delete + would-be update both undone), blockedDealers re-query returns the offending SFID.
+- [02-03]: Plan UI ships end-to-end with client-side parse (D2-06) and useActionState commit; COMP-02 transient blocked-dealers surface proven via Playwright; test-only Route Handler gated triply (NODE_ENV + session + POST).
+- [02-03]: Test-only /api/test/seed-execution Route Handler chosen over npm pre-test script because Playwright wipes .pglite/ before every run; defense-in-depth (NODE_ENV !== production + jose session cookie + POST-only) keeps it from being a back door.
+- [02-03]: countByPeriodActivity added to lib/db/plan-rows.ts (not a new lib/db/queries/plans.ts) — keeps Phase 2's plan_rows DA in one module per the periods.ts/items.ts shape.
 
 ### Pending Todos
 
@@ -110,6 +115,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-05T10:45:00.000Z
-Stopped at: Phase 02-02 complete (commitPlanUpload + plan_rows DB + Zod re-check + D2-01 live PGlite smoke; 82/82 vitest; smoke green; D2-01 PROVEN)
-Resume file: .planning/phases/02-plan-upload-and-periods/02-03-PLAN.md
+Last session: 2026-06-05T16:45:00.000Z
+Stopped at: Phase 02 complete — 02-03 Plans UI + E2E (happy + blocked-by-actuals) shipped; 82/82 vitest + 11/11 Playwright; D2-06 + COMP-02 user-facing both proven
+Resume file: None
