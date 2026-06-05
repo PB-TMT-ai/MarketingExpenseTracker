@@ -13,6 +13,7 @@
     "activities:smoke": "tsx lib/activities/__smoke__/registry.ts",
     "periods:smoke": "tsx lib/db/__smoke__/active-period.ts",
     "items:smoke": "tsx lib/db/__smoke__/item-master.ts",
+    "plan-upload:smoke": "tsx lib/db/__smoke__/plan-upload.ts",
     "test": "vitest run",
     "e2e": "playwright test"
   },
