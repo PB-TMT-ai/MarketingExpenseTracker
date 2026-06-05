@@ -107,7 +107,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 5/5 | Complete   | 2026-06-05 |
-| 2. Plan Upload & Periods | 0/TBD | Not started | - |
+| 2. Plan Upload & Periods | 1/3 | In Progress|  |
 | 3. Actuals Grid | 0/TBD | Not started | - |
 | 4. Compliance & Dashboard | 0/TBD | Not started | - |
 | 5. Excel Export | 0/TBD | Not started | - |
