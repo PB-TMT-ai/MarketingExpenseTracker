@@ -37,7 +37,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] 01-02-PLAN.md — Period-scoped schema + structural off-plan guard (COMP-01)
 - [x] 01-03-PLAN.md — Typed activity config registry, six activities (ACTV-01, ACTV-02, ACTV-03)
 - [x] 01-04-PLAN.md — Period create + active-period scoping + switcher (PRD-01, PRD-02)
-- [ ] 01-05-PLAN.md — Item-master management UI + Server Actions (ACTV-04)
+- [x] 01-05-PLAN.md — Item-master management UI + Server Actions (ACTV-04)
 **UI hint**: yes
 
 > **Discuss-step questions to resolve before locking the schema** (do not resolve now): plan-row grain for multi-unit activities (confirmed YES — one SFID maps to multiple executions/walls, so the UNIQUE match key and whether executions are unique per plan row must reflect this); budget/planned-cost column is confirmed PRESENT and must be modeled on plan rows as a numeric column; choose numeric (never float) money columns, a version column for optimistic concurrency, and `ON DELETE RESTRICT`. **Runtime: local-first** — develop/run against PGlite (embedded Postgres, zero install) behind a single `DATABASE_URL`, then deploy to **Supabase** by swapping that value (use Supabase's **pooled / transaction-mode** connection string on Vercel). Drizzle keeps the schema identical across both.
@@ -106,7 +106,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 4/5 | In Progress|  |
+| 1. Foundation | 5/5 | Complete   | 2026-06-05 |
 | 2. Plan Upload & Periods | 0/TBD | Not started | - |
 | 3. Actuals Grid | 0/TBD | Not started | - |
 | 4. Compliance & Dashboard | 0/TBD | Not started | - |
