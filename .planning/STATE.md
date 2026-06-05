@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: ready_to_plan
-stopped_at: Phase 01 complete (5/5) — ready to discuss Phase 2
-last_updated: 2026-06-05T07:11:29.072Z
+stopped_at: Phase 02 CONTEXT complete (D2-01..06 locked) — ready to plan Phase 2
+last_updated: 2026-06-05T07:39:00.000Z
 last_activity: 2026-06-05
 progress:
   total_phases: 5
@@ -80,10 +80,10 @@ None yet.
 
 Open questions to resolve in the relevant phase's discuss step (NOT blockers for planning):
 
-- [Phase 1] Plan-row grain for multi-unit activities — multi-unit is confirmed YES; the UNIQUE match key and whether executions are unique per plan row must reflect this before migrations lock.
-- [Phase 2] Non-destructive re-upload semantics (append/upsert/replace; policy for a removed plan row that already has actuals).
+- ~~[Phase 1] Plan-row grain for multi-unit activities — multi-unit is confirmed YES~~ — resolved D-03.
+- ~~[Phase 2] Non-destructive re-upload semantics~~ — resolved D2-01 (mirror + block on actuals via FK RESTRICT).
 - [Phase 4] Exact completeness math for partial / in-progress actuals.
-- [Phase 1] Budget/planned-cost column confirmed PRESENT — model as numeric on plan rows.
+- ~~[Phase 1] Budget/planned-cost column confirmed PRESENT~~ — landed in schema as numeric(14,2).
 
 ## Deferred Items
 
