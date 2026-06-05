@@ -20,3 +20,8 @@ next-env.d.ts
 
 # Local dev server log (debug scratch)
 .dev.log
+
+# Playwright outputs (HTML report, traces, screenshots on failure)
+/test-results/
+/playwright-report/
+/playwright/.cache/

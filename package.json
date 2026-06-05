@@ -11,7 +11,8 @@
     "db:studio": "drizzle-kit studio",
     "db:spike": "tsx lib/db/__smoke__/spike.ts",
     "activities:smoke": "tsx lib/activities/__smoke__/registry.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.1",
@@ -24,6 +25,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "4.3.0",
     "@types/node": "^22",
     "@types/react": "^19",
