@@ -5,7 +5,18 @@ but should be addressed at the appropriate time.
 
 ---
 
-## DEF-02-01-01: PGlite WASM "Aborted" on vitest runs of `lib/actions/{periods,items}.test.ts`
+## DEF-02-01-01: PGlite WASM "Aborted" on vitest runs of `lib/actions/{periods,items}.test.ts` — **RESOLVED 2026-06-05**
+
+**Resolution:** Root cause was filesystem contention — a `next dev` process held
+`./.pglite` open (PGlite is single-connection; uses real Postgres `postmaster.pid`
+locking under Emscripten/WASM), so vitest's PGlite instance aborted on the first
+query (`CREATE SCHEMA IF NOT EXISTS "drizzle"`) when it couldn't acquire the lock.
+Fix: `vitest.config.ts` now sets `env.DATABASE_URL = process.env.DATABASE_URL ??
+"memory://"` — vitest gets its own in-memory PGlite per run; the user's dev DB is
+untouched. Full suite green: 74 / 74. Override via shell env to point tests at a
+real Postgres.
+
+---
 
 **Discovered during:** Plan 02-01, Task 3 (full-suite verification)
 **Scope:** Pre-existing — reproduced at commit `35c7f13` (last Phase 1 commit) before
