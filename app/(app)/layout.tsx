@@ -39,6 +39,12 @@ export default async function AppLayout({
             Periods
           </Link>
           <Link
+            href="/plans"
+            className="rounded-md border border-neutral-200 px-3 py-1.5 hover:bg-neutral-50"
+          >
+            Plans
+          </Link>
+          <Link
             href="/items"
             className="rounded-md border border-neutral-200 px-3 py-1.5 hover:bg-neutral-50"
           >

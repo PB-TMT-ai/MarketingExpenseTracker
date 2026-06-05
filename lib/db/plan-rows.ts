@@ -68,6 +68,33 @@ export async function listByPeriodActivity(
 }
 
 /**
+ * Aggregate plan-row counts grouped by (periodId, activity). Single query for the whole
+ * grid on /plans — the page assembles the count map and renders missing cells as 0.
+ * Added in Plan 02-03 for the (activity × period) overview.
+ */
+export type PlanRowCount = {
+  periodId: number;
+  activity: string;
+  count: number;
+};
+
+export async function countByPeriodActivity(): Promise<PlanRowCount[]> {
+  const rows = await db
+    .select({
+      periodId: planRows.periodId,
+      activity: planRows.activity,
+      count: sql<number>`count(${planRows.id})::int`,
+    })
+    .from(planRows)
+    .groupBy(planRows.periodId, planRows.activity);
+  return rows.map((r) => ({
+    periodId: Number(r.periodId),
+    activity: r.activity,
+    count: Number(r.count),
+  }));
+}
+
+/**
  * The row shape `commitPlanUpload` hands to `bulkInsertPlanRows`. Shared who/where
  * columns are present as nullable string columns; jsonb tail rides in `fields`;
  * plannedCost is a number-or-null, converted to string on write to satisfy numeric(14,2).
