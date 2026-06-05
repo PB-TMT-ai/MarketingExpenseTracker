@@ -10,6 +10,7 @@
     "db:migrate:local": "tsx lib/db/migrate-cli.ts",
     "db:studio": "drizzle-kit studio",
     "db:spike": "tsx lib/db/__smoke__/spike.ts",
+    "activities:smoke": "tsx lib/activities/__smoke__/registry.ts",
     "test": "vitest run"
   },
   "dependencies": {
