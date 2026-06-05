@@ -21,8 +21,8 @@ Requirements for the initial release. Each maps to a roadmap phase.
 
 ### Periods
 
-- [ ] **PRD-01**: User can create a planning period (month / quarter / FY) and mark it active
-- [ ] **PRD-02**: Plans and actuals are scoped to a period; selecting a period shows only that period's data
+- [x] **PRD-01**: User can create a planning period (month / quarter / FY) and mark it active
+- [x] **PRD-02**: Plans and actuals are scoped to a period; selecting a period shows only that period's data
 
 ### Plan Upload
 
@@ -99,8 +99,8 @@ Which phases cover which requirements. Populated during roadmap creation.
 | ACTV-02 | Phase 1 — Foundation | Complete |
 | ACTV-03 | Phase 1 — Foundation | Complete |
 | ACTV-04 | Phase 1 — Foundation | Pending |
-| PRD-01 | Phase 1 — Foundation | Pending |
-| PRD-02 | Phase 1 — Foundation | Pending |
+| PRD-01 | Phase 1 — Foundation | Complete |
+| PRD-02 | Phase 1 — Foundation | Complete |
 | COMP-01 | Phase 1 — Foundation | Complete |
 | PLAN-01 | Phase 2 — Plan Upload & Periods | Pending |
 | PLAN-02 | Phase 2 — Plan Upload & Periods | Pending |

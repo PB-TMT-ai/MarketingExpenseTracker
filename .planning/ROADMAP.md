@@ -36,7 +36,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] 01-01-PLAN.md — Walking skeleton: auth gate + dual-driver PGlite seam (ACCESS-01, ACCESS-02)
 - [x] 01-02-PLAN.md — Period-scoped schema + structural off-plan guard (COMP-01)
 - [x] 01-03-PLAN.md — Typed activity config registry, six activities (ACTV-01, ACTV-02, ACTV-03)
-- [ ] 01-04-PLAN.md — Period create + active-period scoping + switcher (PRD-01, PRD-02)
+- [x] 01-04-PLAN.md — Period create + active-period scoping + switcher (PRD-01, PRD-02)
 - [ ] 01-05-PLAN.md — Item-master management UI + Server Actions (ACTV-04)
 **UI hint**: yes
 
@@ -106,7 +106,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 3/5 | In Progress|  |
+| 1. Foundation | 4/5 | In Progress|  |
 | 2. Plan Upload & Periods | 0/TBD | Not started | - |
 | 3. Actuals Grid | 0/TBD | Not started | - |
 | 4. Compliance & Dashboard | 0/TBD | Not started | - |
