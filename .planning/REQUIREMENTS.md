@@ -14,9 +14,9 @@ Requirements for the initial release. Each maps to a roadmap phase.
 
 ### Activities (config registry)
 
-- [ ] **ACTV-01**: System supports six activity types — Counter Wall Painting, GSB, NLB, In-shop Branding, POP/Dealer Kit, Dealer Certificate — each defined by a config entry
-- [ ] **ACTV-02**: Each activity declares its own plan columns and actual columns (type: measurement / item-list / status); the grid, import, and export all read from this config
-- [ ] **ACTV-03**: Adding a new activity later is a config change — no new screens or bespoke code
+- [x] **ACTV-01**: System supports six activity types — Counter Wall Painting, GSB, NLB, In-shop Branding, POP/Dealer Kit, Dealer Certificate — each defined by a config entry
+- [x] **ACTV-02**: Each activity declares its own plan columns and actual columns (type: measurement / item-list / status); the grid, import, and export all read from this config
+- [x] **ACTV-03**: Adding a new activity later is a config change — no new screens or bespoke code
 - [ ] **ACTV-04**: User can manage the selectable item list (item master) used for POP / dealer-kit entry
 
 ### Periods
@@ -95,9 +95,9 @@ Which phases cover which requirements. Populated during roadmap creation.
 |-------------|-------|--------|
 | ACCESS-01 | Phase 1 — Foundation | Complete |
 | ACCESS-02 | Phase 1 — Foundation | Complete |
-| ACTV-01 | Phase 1 — Foundation | Pending |
-| ACTV-02 | Phase 1 — Foundation | Pending |
-| ACTV-03 | Phase 1 — Foundation | Pending |
+| ACTV-01 | Phase 1 — Foundation | Complete |
+| ACTV-02 | Phase 1 — Foundation | Complete |
+| ACTV-03 | Phase 1 — Foundation | Complete |
 | ACTV-04 | Phase 1 — Foundation | Pending |
 | PRD-01 | Phase 1 — Foundation | Pending |
 | PRD-02 | Phase 1 — Foundation | Pending |
