@@ -32,7 +32,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. The database makes it structurally impossible to attach an actual to an SFID that has no plan row for that activity + period (NOT NULL FK + UNIQUE match key), independent of any app-layer check.
   5. A user can manage the selectable item master used later for POP / dealer-kit entry.
   6. The entire app runs and is usable on a local machine with no cloud dependency (local embedded Postgres / PGlite), and switching to Supabase later requires only changing `DATABASE_URL`.
-**Plans**: TBD
+**Plans**: 5 plans (2 shipped, 3 gap-closure)
+- [x] 01-01-PLAN.md — Walking skeleton: auth gate + dual-driver PGlite seam (ACCESS-01, ACCESS-02)
+- [x] 01-02-PLAN.md — Period-scoped schema + structural off-plan guard (COMP-01)
+- [ ] 01-03-PLAN.md — Typed activity config registry, six activities (ACTV-01, ACTV-02, ACTV-03)
+- [ ] 01-04-PLAN.md — Period create + active-period scoping + switcher (PRD-01, PRD-02)
+- [ ] 01-05-PLAN.md — Item-master management UI + Server Actions (ACTV-04)
 **UI hint**: yes
 
 > **Discuss-step questions to resolve before locking the schema** (do not resolve now): plan-row grain for multi-unit activities (confirmed YES — one SFID maps to multiple executions/walls, so the UNIQUE match key and whether executions are unique per plan row must reflect this); budget/planned-cost column is confirmed PRESENT and must be modeled on plan rows as a numeric column; choose numeric (never float) money columns, a version column for optimistic concurrency, and `ON DELETE RESTRICT`. **Runtime: local-first** — develop/run against PGlite (embedded Postgres, zero install) behind a single `DATABASE_URL`, then deploy to **Supabase** by swapping that value (use Supabase's **pooled / transaction-mode** connection string on Vercel). Drizzle keeps the schema identical across both.
@@ -101,7 +106,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 2/2 | Complete   | 2026-06-04 |
+| 1. Foundation | 2/5 | Gap closure (3/9 reqs) | - |
 | 2. Plan Upload & Periods | 0/TBD | Not started | - |
 | 3. Actuals Grid | 0/TBD | Not started | - |
 | 4. Compliance & Dashboard | 0/TBD | Not started | - |
