@@ -11,6 +11,7 @@
     "db:studio": "drizzle-kit studio",
     "db:spike": "tsx lib/db/__smoke__/spike.ts",
     "activities:smoke": "tsx lib/activities/__smoke__/registry.ts",
+    "periods:smoke": "tsx lib/db/__smoke__/active-period.ts",
     "test": "vitest run",
     "e2e": "playwright test"
   },
