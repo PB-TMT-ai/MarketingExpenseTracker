@@ -192,7 +192,11 @@ export default function UploadForm({
           type="file"
           accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           onChange={onFile}
-          className="mt-1 block w-full text-sm"
+          // The `file:` modifier styles the inner `::file-selector-button` element.
+          // Tailwind 4 preflight zeros the native button chrome, so without these
+          // utilities the browser's "Choose File" button is invisible against the
+          // input background (only the placeholder text remains visible).
+          className="mt-1 block w-full cursor-pointer rounded-md border border-neutral-300 text-sm text-neutral-700 file:mr-3 file:cursor-pointer file:rounded-l-md file:border-0 file:border-r file:border-neutral-300 file:bg-neutral-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-neutral-700"
           data-slot="file-input"
         />
       </label>
