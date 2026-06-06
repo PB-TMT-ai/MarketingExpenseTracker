@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - Activity registry, period-scoped schema with structural off-plan guard, item master, and shared-password gate (completed 2026-06-04)
 - [x] **Phase 2: Plan Upload & Periods** - Per-activity Excel plan ingestion that establishes the allowed-SFID master list per period (completed 2026-06-05)
-- [ ] **Phase 3: Actuals Grid** - Editable spreadsheet-style grid for recording executions, filtering, and POP multi-item entry
+- [x] **Phase 3: Actuals Grid** - Editable spreadsheet-style grid for recording executions, filtering, and POP multi-item entry (completed 2026-06-06)
 - [ ] **Phase 4: Compliance & Dashboard** - Completeness math and the headline plan-executed / budget-vs-spend dashboard
 - [ ] **Phase 5: Excel Export** - Export the current filtered grid to a correctly-typed `.xlsx`
 
@@ -74,7 +74,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] 03-02-PLAN.md — Pure lib/actuals/ core: calc engine, flat row model, registry→colDef mapper, cascading filter + status enumValues
 - [x] 03-03-PLAN.md — executions data layer + saveExecutionsBatch action (per-unit version optimistic concurrency, server recompute)
 - [x] 03-04-PLAN.md — End-to-end grid slice: page + AG Grid client + filter bar + save bar + Actuals nav + e2e
-- [ ] 03-05-PLAN.md — POP multi-item modal (GRID-06) + Dealer Certificate inline (GRID-08) + POP/cert e2e
+- [x] 03-05-PLAN.md — POP multi-item modal (GRID-06) + Dealer Certificate inline (GRID-08) + POP/cert e2e
 **UI hint**: yes
 
 > **Discuss-step note** (do not resolve now): begin with a short spike to confirm AG Grid Community editing / virtualization / server-side filtering feel against a real period of data (TanStack Table is the documented fallback). Saves are per-field patches with optimistic concurrency (version check) to prevent lost edits on the shared login.
@@ -113,6 +113,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Foundation | 5/5 | Complete   | 2026-06-05 |
 | 2. Plan Upload & Periods | 3/3 | Complete   | 2026-06-05 |
-| 3. Actuals Grid | 0/5 | Planned | - |
+| 3. Actuals Grid | 5/5 | Complete   | 2026-06-06 |
 | 4. Compliance & Dashboard | 0/TBD | Not started | - |
 | 5. Excel Export | 0/TBD | Not started | - |
