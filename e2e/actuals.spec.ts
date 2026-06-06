@@ -317,3 +317,171 @@ test("stale-version Save surfaces row-conflict without clobbering; sibling unit 
   const sfBFinal = await getCellText(page, 1, "fields.wallShopNo");
   expect(sfBFinal.trim()).toContain("SIBLING-OK");
 });
+
+// ---------------------------------------------------------------------------
+// 03-05 helpers
+// ---------------------------------------------------------------------------
+
+/** Add an item to the item master via /items. Confirms success by form reset. */
+async function addItem(page: Page, name: string) {
+  await page.goto("/items");
+  await page.fill("input[name=name]", name);
+  await page.click("button[type=submit]:has-text('Add item')");
+  // The form resets its name input on success (state.ok) — robust success signal.
+  await expect(page.locator("input[name=name]")).toHaveValue("", { timeout: 8_000 });
+}
+
+/** Upload + commit a single-activity plan fixture; returns the committed periodId. */
+async function uploadPlan(
+  page: Page,
+  activity: string,
+  fixture: string,
+  expectRows: number,
+): Promise<string> {
+  await page.goto("/plans/upload");
+  await page.selectOption('select[data-slot="activity-select"]', activity);
+  await page.setInputFiles('input[data-slot="file-input"]', fixture);
+  await expect(page.locator('[data-slot="preview-row"]')).toHaveCount(expectRows);
+  await page.click('[data-slot="commit-button"]');
+  await page.waitForLoadState("networkidle");
+  await expect(page.locator('[data-slot="commit-success"]')).toBeVisible();
+  const periodId = await page
+    .locator('select[data-slot="period-select"] option:checked')
+    .getAttribute("value");
+  expect(periodId).toBeTruthy();
+  return periodId as string;
+}
+
+/**
+ * Set an inline cell value via the AG Grid API (robust vs agSelect/agDate editor popups).
+ * setDataValue fires onCellValueChanged → marks the row dirty, exactly like a user edit.
+ */
+async function setCellViaApi(
+  page: Page,
+  rowIndex: number,
+  colId: string,
+  value: string | number,
+) {
+  await page.evaluate(
+    ({ rowIndex, colId, value }) => {
+      const api = (
+        window as unknown as Record<
+          string,
+          {
+            getDisplayedRowAtIndex?: (i: number) => {
+              setDataValue?: (c: string, v: unknown) => void;
+            } | null;
+          }
+        >
+      ).__actualsGridApi;
+      const node = api?.getDisplayedRowAtIndex?.(rowIndex);
+      node?.setDataValue?.(colId, value);
+    },
+    { rowIndex, colId, value },
+  );
+  await page.waitForTimeout(150);
+}
+
+// ---------------------------------------------------------------------------
+// Test 4: POP/Dealer-Kit multi-item modal (GRID-06)
+// ---------------------------------------------------------------------------
+
+test("POP kit: add 2 line items → live totals → subtotal rollup → persist", async ({
+  page,
+}) => {
+  await login(page);
+  await createActivePeriod(page);
+  await addItem(page, "Poster");
+  await addItem(page, "Banner");
+  await uploadPlan(page, "pop-dealer-kit", "e2e/fixtures/plan-pop-dealer-kit.xlsx", 1);
+
+  await page.goto("/actuals?activity=pop-dealer-kit");
+  await page.waitForLoadState("networkidle");
+  await waitForGrid(page);
+
+  // Open the kit modal for the POP dealer row.
+  await page.locator('[data-slot="pop-edit"]').first().click();
+  await expect(page.locator('[data-slot="pop-modal"]')).toBeVisible();
+
+  const lines = page.locator('[data-slot="pop-line"]');
+
+  // Line 0: Poster × 2 @ 100 = 200.00
+  await lines.nth(0).locator('[data-slot="pop-line-item"]').selectOption("Poster");
+  await lines.nth(0).locator('[data-slot="pop-line-qty"]').fill("2");
+  await lines.nth(0).locator('[data-slot="pop-line-rate"]').fill("100");
+  await expect(lines.nth(0).locator('[data-slot="pop-line-total"]')).toHaveText("200.00");
+
+  // Line 1: Banner × 3 @ 50 = 150.00
+  await page.locator('[data-slot="pop-add-line"]').click();
+  await lines.nth(1).locator('[data-slot="pop-line-item"]').selectOption("Banner");
+  await lines.nth(1).locator('[data-slot="pop-line-qty"]').fill("3");
+  await lines.nth(1).locator('[data-slot="pop-line-rate"]').fill("50");
+  await expect(lines.nth(1).locator('[data-slot="pop-line-total"]')).toHaveText("150.00");
+
+  // Subtotal rollup = 350.00
+  await expect(page.locator('[data-slot="pop-subtotal"]')).toHaveText("₹350.00");
+
+  // Confirm → modal closes, kit cell shows the count + rolled total, row is dirty.
+  await page.locator('[data-slot="pop-confirm"]').click();
+  await expect(page.locator('[data-slot="pop-modal"]')).toHaveCount(0);
+  const kitCell = page.locator('[data-slot="pop-edit"]').first();
+  await expect(kitCell).toContainText("2 items");
+  await expect(kitCell).toContainText("350");
+
+  // Save → confirmation.
+  await page.locator('[data-slot="save-button"]').click();
+  await expect(page.locator('[data-slot="save-confirmation"]')).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // Reload → kit persisted as one execution + 2 execution_items (loaded via listKitLines).
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+  await waitForGrid(page);
+  const kitAfter = page.locator('[data-slot="pop-edit"]').first();
+  await expect(kitAfter).toContainText("2 items");
+  await expect(kitAfter).toContainText("350");
+});
+
+// ---------------------------------------------------------------------------
+// Test 5: Dealer Certificate inline Status + Date + Cost (GRID-08)
+// ---------------------------------------------------------------------------
+
+test("Dealer Certificate: Status + Date + Cost persist inline (no popup)", async ({
+  page,
+}) => {
+  await login(page);
+  await createActivePeriod(page);
+  await uploadPlan(
+    page,
+    "dealer-certificate",
+    "e2e/fixtures/plan-dealer-certificate.xlsx",
+    1,
+  );
+
+  await page.goto("/actuals?activity=dealer-certificate");
+  await page.waitForLoadState("networkidle");
+  await waitForGrid(page);
+
+  // No POP modal affordance for a status-type activity.
+  await expect(page.locator('[data-slot="pop-edit"]')).toHaveCount(0);
+
+  // Set Status (Done = Issued), Date, Cost inline via the grid API.
+  await setCellViaApi(page, 0, "fields.status", "Done");
+  await setCellViaApi(page, 0, "fields.issuanceDate", "2026-09-15");
+  await setCellViaApi(page, 0, "fields.cost", 1500);
+
+  // Save → confirmation.
+  await expect(page.locator('[data-slot="save-button"]')).toBeEnabled({ timeout: 8_000 });
+  await page.locator('[data-slot="save-button"]').click();
+  await expect(page.locator('[data-slot="save-confirmation"]')).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // Reload → Status + Cost persisted on the row.
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+  await waitForGrid(page);
+  expect((await getCellText(page, 0, "fields.status")).trim()).toContain("Done");
+  expect((await getCellText(page, 0, "fields.cost")).trim()).toContain("1500");
+});
