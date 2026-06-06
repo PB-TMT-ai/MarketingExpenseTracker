@@ -47,8 +47,8 @@ export default async function PlansPage() {
   return (
     <div className="mx-auto grid max-w-5xl gap-6">
       <header>
-        <h1 className="text-xl font-semibold">Plans</h1>
-        <p className="mt-1 text-sm text-neutral-600">
+        <h1 className="text-2xl font-semibold tracking-tight">Plans</h1>
+        <p className="mt-2 text-sm text-neutral-600">
           The approved plan for each activity in the active period. Re-uploading is
           non-destructive — existing actuals stay attached, and removing a dealer with
           recorded actuals is blocked at the database.

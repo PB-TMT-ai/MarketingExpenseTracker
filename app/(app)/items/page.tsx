@@ -16,8 +16,8 @@ export default async function ItemsPage() {
   return (
     <div className="mx-auto grid max-w-3xl gap-6">
       <header>
-        <h1 className="text-xl font-semibold">Item master</h1>
-        <p className="mt-1 text-sm text-neutral-600">
+        <h1 className="text-2xl font-semibold tracking-tight">Item master</h1>
+        <p className="mt-2 text-sm text-neutral-600">
           The selectable list used for POP / dealer-kit line items. Retiring an item
           hides it from the picker without removing past entries — the row stays in
           the database so existing executions are unaffected.

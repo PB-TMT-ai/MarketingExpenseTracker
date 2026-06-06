@@ -40,7 +40,7 @@ export default async function ActualsPage({
     return (
       <div data-slot="actuals-page" className="mx-auto max-w-5xl">
         <header className="mb-6">
-          <h1 className="text-xl font-semibold">Actuals</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Actuals</h1>
         </header>
         <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
           <p className="text-sm text-neutral-500">
@@ -103,8 +103,8 @@ export default async function ActualsPage({
     <div data-slot="actuals-page" className="mx-auto max-w-[1600px]">
       <header className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Actuals</h1>
-          <p className="mt-1 text-sm text-neutral-600">
+          <h1 className="text-2xl font-semibold tracking-tight">Actuals</h1>
+          <p className="mt-2 text-sm text-neutral-600">
             Record on-ground executions against the plan for{" "}
             <span className="font-medium">{activePeriod.label}</span>.
           </p>
