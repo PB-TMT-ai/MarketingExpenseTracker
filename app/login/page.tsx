@@ -19,8 +19,14 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center p-6">
       <form
         action={formAction}
-        className="w-full max-w-sm rounded-xl border border-neutral-200 bg-white p-8 shadow-sm"
+        className="w-full max-w-sm overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm"
       >
+        <div
+          aria-hidden
+          className="h-1 w-full"
+          style={{ background: "var(--brand)" }}
+        />
+        <div className="p-8">
         <h1 className="text-2xl font-semibold tracking-tight">
           Marketing Expense Tracker
         </h1>
@@ -53,6 +59,7 @@ export default function LoginPage() {
         >
           {pending ? "Checking…" : "Enter"}
         </button>
+        </div>
       </form>
     </main>
   );

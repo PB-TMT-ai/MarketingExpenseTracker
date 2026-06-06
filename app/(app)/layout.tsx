@@ -25,6 +25,11 @@ export default async function AppLayout({
 
   return (
     <div className="min-h-screen">
+      <div
+        aria-hidden
+        className="h-1 w-full"
+        style={{ background: "var(--brand)" }}
+      />
       <header className="flex flex-col gap-2 border-b border-neutral-200 bg-white px-4 py-3 sm:px-6 md:flex-row md:items-center md:justify-between md:gap-4">
         <div className="flex items-center justify-between gap-3 md:justify-start md:gap-4">
           <Link
