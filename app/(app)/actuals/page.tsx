@@ -151,15 +151,28 @@ export default async function ActualsPage({
         </div>
       ) : (
         <section className="rounded-xl border border-neutral-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-neutral-200 p-4">
+          <div className="flex flex-col gap-2 border-b border-neutral-200 p-4 sm:flex-row sm:items-baseline sm:justify-between">
             <h2 className="text-base font-semibold">
-              {ACTIVITIES[activityKey].label}{" "}
-              <span className="ml-1 text-sm font-normal text-neutral-500">
-                {activePeriod.label} · {planRows.length} plan{" "}
-                {planRows.length === 1 ? "row" : "rows"} · {executions.length}{" "}
-                execution{executions.length === 1 ? "" : "s"}
-              </span>
+              {ACTIVITIES[activityKey].label}
             </h2>
+            <dl className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-neutral-500">
+              <div>
+                <dt className="sr-only">Period</dt>
+                <dd>{activePeriod.label}</dd>
+              </div>
+              <div>
+                <dt className="inline">Plan rows: </dt>
+                <dd className="inline font-semibold text-neutral-900">
+                  {planRows.length}
+                </dd>
+              </div>
+              <div>
+                <dt className="inline">Executions: </dt>
+                <dd className="inline font-semibold text-neutral-900">
+                  {executions.length}
+                </dd>
+              </div>
+            </dl>
           </div>
           <div className="p-4">
             <ActualsGrid
