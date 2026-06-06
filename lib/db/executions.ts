@@ -335,6 +335,18 @@ export async function savePopKit(
 // ---------------------------------------------------------------------------
 
 /**
+ * Test/smoke helper — wipes the execution_items table.
+ *
+ * MUST run BEFORE `_resetExecutionsForTest` because of the NOT NULL FK with
+ * ON DELETE RESTRICT on `execution_items.execution_id`. A delete against
+ * `executions` fails if any row has child execution_items.
+ * NEVER call from app code.
+ */
+export async function _resetExecutionItemsForTest(): Promise<void> {
+  await db.execute(sql`delete from execution_items`);
+}
+
+/**
  * Test/smoke helper — find an execution by plan_row_id.
  * Returns { id, version } or null. Used by e2e conflict tests to read a
  * known execution id+version for building stale-version payloads.
