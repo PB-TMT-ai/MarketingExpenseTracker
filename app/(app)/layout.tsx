@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth/session";
 import { logout } from "@/lib/actions/auth";
+import NavLinks from "./nav-links";
 import PeriodSwitcher from "./period-switcher";
 
 /**
@@ -35,30 +36,7 @@ export default async function AppLayout({
           <PeriodSwitcher />
         </div>
         <nav className="flex items-center gap-2 text-sm">
-          <Link
-            href="/periods"
-            className="inline-flex min-h-11 items-center rounded-md border border-neutral-200 px-3.5 hover:bg-neutral-50"
-          >
-            Periods
-          </Link>
-          <Link
-            href="/plans"
-            className="inline-flex min-h-11 items-center rounded-md border border-neutral-200 px-3.5 hover:bg-neutral-50"
-          >
-            Plans
-          </Link>
-          <Link
-            href="/items"
-            className="inline-flex min-h-11 items-center rounded-md border border-neutral-200 px-3.5 hover:bg-neutral-50"
-          >
-            Items
-          </Link>
-          <Link
-            href="/actuals"
-            className="inline-flex min-h-11 items-center rounded-md border border-neutral-200 px-3.5 hover:bg-neutral-50"
-          >
-            Actuals
-          </Link>
+          <NavLinks />
           <form action={logout}>
             <button
               type="submit"
