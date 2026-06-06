@@ -69,7 +69,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A single planned dealer (SFID) can hold multiple execution entries (e.g. several walls/boards), each with its own measurements and cost, summing toward that dealer's plan.
   4. The system auto-calculates derived values (sq ft from dimensions; total cost from sq ft × rate), stores them, and shows derived cells as read-only.
   5. A user can record POP / dealer-kit executions as multiple line items via a popup (item × qty × rate → total) rolled up to the dealer row, and Dealer Certificate entry captures issuance status, date, and cost; edits are batched with a clear saved/dirty indicator.
-**Plans**: TBD
+**Plans**: 5 plans
+- [ ] 03-01-PLAN.md — Throwaway AG Grid Community spike with GO/NO-GO vs TanStack fallback (D3-00)
+- [ ] 03-02-PLAN.md — Pure lib/actuals/ core: calc engine, flat row model, registry→colDef mapper, cascading filter + status enumValues
+- [ ] 03-03-PLAN.md — executions data layer + saveExecutionsBatch action (per-unit version optimistic concurrency, server recompute)
+- [ ] 03-04-PLAN.md — End-to-end grid slice: page + AG Grid client + filter bar + save bar + Actuals nav + e2e
+- [ ] 03-05-PLAN.md — POP multi-item modal (GRID-06) + Dealer Certificate inline (GRID-08) + POP/cert e2e
 **UI hint**: yes
 
 > **Discuss-step note** (do not resolve now): begin with a short spike to confirm AG Grid Community editing / virtualization / server-side filtering feel against a real period of data (TanStack Table is the documented fallback). Saves are per-field patches with optimistic concurrency (version check) to prevent lost edits on the shared login.
@@ -108,6 +113,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Foundation | 5/5 | Complete   | 2026-06-05 |
 | 2. Plan Upload & Periods | 3/3 | Complete   | 2026-06-05 |
-| 3. Actuals Grid | 0/TBD | Not started | - |
+| 3. Actuals Grid | 0/5 | Planned | - |
 | 4. Compliance & Dashboard | 0/TBD | Not started | - |
 | 5. Excel Export | 0/TBD | Not started | - |
