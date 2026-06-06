@@ -37,6 +37,23 @@ const EDITOR_BY_KIND: Record<FieldDef["kind"], string> = {
   long: "agTextCellEditor",
 };
 
+/**
+ * Per-kind minimum column width (px). Text-kind columns (dealer/area, distributor,
+ * SFID) tend to carry long human-readable values and were getting truncated to
+ * 'ACME Coun…' at desktop width (F-028). Numeric/date/coord columns stay narrower
+ * since their content is fixed-width. AG Grid still lets the user resize.
+ */
+const MIN_WIDTH_BY_KIND: Record<FieldDef["kind"], number> = {
+  text: 160,
+  number: 110,
+  currency: 120,
+  date: 130,
+  status: 130,
+  enum: 130,
+  lat: 130,
+  long: 130,
+};
+
 // ---------------------------------------------------------------------------
 // buildColumnDefs
 // ---------------------------------------------------------------------------
@@ -61,6 +78,7 @@ export function buildColumnDefs(cfg: ActivityConfig): ColDef[] {
     field: `plan.${f.key}`,
     editable: false,
     cellClass: "ag-cell-plan",
+    minWidth: MIN_WIDTH_BY_KIND[f.kind],
   }));
 
   // Actual columns: editable, dotted fields.* path, cellEditor per kind
@@ -83,6 +101,7 @@ export function buildColumnDefs(cfg: ActivityConfig): ColDef[] {
         editable: true, // overridable
         cellEditor: editor,
         cellEditorParams: editorParams,
+        minWidth: MIN_WIDTH_BY_KIND[f.kind],
         /**
          * valueGetter: returns the stored override value when overridden,
          * otherwise computes via the D3-04 formula engine.
@@ -107,6 +126,7 @@ export function buildColumnDefs(cfg: ActivityConfig): ColDef[] {
       editable: true,
       cellEditor: editor,
       cellEditorParams: editorParams,
+      minWidth: MIN_WIDTH_BY_KIND[f.kind],
     };
   });
 

@@ -25,20 +25,28 @@ export default async function PeriodsPage() {
 
       <PeriodForm />
 
-      <section className="rounded-xl border border-neutral-200 bg-white shadow-sm">
-        <h2 className="border-b border-neutral-200 p-4 text-base font-semibold">
-          Existing periods
+      <section data-slot="periods-section" aria-labelledby="periods-heading">
+        <h2
+          id="periods-heading"
+          className="text-base font-semibold text-neutral-700"
+        >
+          {rows.length === 0
+            ? "No periods yet"
+            : `${rows.length} ${rows.length === 1 ? "period" : "periods"}`}
         </h2>
         {rows.length === 0 ? (
-          <p className="p-6 text-sm text-neutral-500">
-            No periods yet — add one above.
+          <p className="mt-3 rounded-lg border border-dashed border-neutral-300 p-4 text-sm text-neutral-500">
+            Add your first period above.
           </p>
         ) : (
-          <ul data-slot="period-list" className="divide-y divide-neutral-200">
+          <ul
+            data-slot="period-list"
+            className="mt-3 divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm"
+          >
             {rows.map((p) => (
               <li
                 key={p.id}
-                className="flex items-center justify-between gap-4 p-4 text-sm"
+                className="flex items-center justify-between gap-4 px-4 py-3 text-sm"
               >
                 <div>
                   <div className="font-medium">
