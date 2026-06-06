@@ -50,6 +50,12 @@ export default async function AppLayout({
           >
             Items
           </Link>
+          <Link
+            href="/actuals"
+            className="rounded-md border border-neutral-200 px-3 py-1.5 hover:bg-neutral-50"
+          >
+            Actuals
+          </Link>
           <form action={logout}>
             <button
               type="submit"
