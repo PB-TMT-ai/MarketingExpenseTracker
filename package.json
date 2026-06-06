@@ -14,6 +14,7 @@
     "periods:smoke": "tsx lib/db/__smoke__/active-period.ts",
     "items:smoke": "tsx lib/db/__smoke__/item-master.ts",
     "plan-upload:smoke": "tsx lib/db/__smoke__/plan-upload.ts",
+    "executions:smoke": "tsx lib/db/__smoke__/executions.ts",
     "fixtures:build": "tsx e2e/fixtures/build-fixtures.ts",
     "test": "vitest run",
     "e2e": "playwright test"
