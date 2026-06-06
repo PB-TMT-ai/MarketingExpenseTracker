@@ -61,7 +61,7 @@ export default async function PeriodsPage() {
                     <input type="hidden" name="id" value={p.id} />
                     <button
                       type="submit"
-                      className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs hover:bg-neutral-50"
+                      className="inline-flex h-10 items-center rounded-md border border-neutral-300 px-3 text-xs font-medium hover:bg-neutral-50"
                     >
                       Make active
                     </button>
