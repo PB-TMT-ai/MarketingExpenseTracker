@@ -25,8 +25,8 @@ export default function NavLinks() {
             aria-current={isActive ? "page" : undefined}
             className={
               isActive
-                ? "inline-flex min-h-11 items-center rounded-md border border-neutral-900 bg-neutral-900 px-3.5 font-medium text-white"
-                : "inline-flex min-h-11 items-center rounded-md border border-neutral-200 px-3.5 hover:bg-neutral-50"
+                ? "inline-flex min-h-11 shrink-0 items-center rounded-md border border-neutral-900 bg-neutral-900 px-3.5 font-medium text-white"
+                : "inline-flex min-h-11 shrink-0 items-center rounded-md border border-neutral-200 px-3.5 hover:bg-neutral-50"
             }
           >
             {label}
