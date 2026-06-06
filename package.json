@@ -8,6 +8,7 @@
     "start": "next start",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "tsx lib/db/migrate-cli.ts",
+    "db:migrate:prod": "drizzle-kit migrate --config=drizzle.config.prod.ts",
     "db:studio": "drizzle-kit studio",
     "db:spike": "tsx lib/db/__smoke__/spike.ts",
     "activities:smoke": "tsx lib/activities/__smoke__/registry.ts",
