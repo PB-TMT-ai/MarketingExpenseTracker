@@ -19,11 +19,19 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center p-6">
       <form
         action={formAction}
-        className="w-full max-w-sm rounded-xl border border-neutral-200 bg-white p-8 shadow-sm"
+        className="w-full max-w-sm overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm"
       >
-        <h1 className="text-lg font-semibold">Marketing Expense Tracker</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          Enter the shared team password to continue.
+        <div
+          aria-hidden
+          className="h-1 w-full"
+          style={{ background: "var(--brand)" }}
+        />
+        <div className="p-8">
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Marketing Expense Tracker
+        </h1>
+        <p className="mt-2 text-sm text-neutral-600">
+          JSW marketing team — enter the shared password to continue.
         </p>
 
         <label htmlFor="password" className="mt-6 block text-sm font-medium">
@@ -35,7 +43,7 @@ export default function LoginPage() {
           type="password"
           autoFocus
           autoComplete="current-password"
-          className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900"
+          className="mt-1.5 block h-11 w-full rounded-md border border-neutral-300 px-3 text-sm"
         />
 
         {state.error ? (
@@ -47,10 +55,11 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={pending}
-          className="mt-6 w-full rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-60"
+          className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white transition-opacity hover:bg-neutral-800 disabled:opacity-60"
         >
           {pending ? "Checking…" : "Enter"}
         </button>
+        </div>
       </form>
     </main>
   );

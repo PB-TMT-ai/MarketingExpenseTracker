@@ -40,7 +40,7 @@ export default async function ActualsPage({
     return (
       <div data-slot="actuals-page" className="mx-auto max-w-5xl">
         <header className="mb-6">
-          <h1 className="text-xl font-semibold">Actuals</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Actuals</h1>
         </header>
         <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
           <p className="text-sm text-neutral-500">
@@ -103,8 +103,8 @@ export default async function ActualsPage({
     <div data-slot="actuals-page" className="mx-auto max-w-[1600px]">
       <header className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Actuals</h1>
-          <p className="mt-1 text-sm text-neutral-600">
+          <h1 className="text-2xl font-semibold tracking-tight">Actuals</h1>
+          <p className="mt-2 text-sm text-neutral-600">
             Record on-ground executions against the plan for{" "}
             <span className="font-medium">{activePeriod.label}</span>.
           </p>
@@ -114,8 +114,9 @@ export default async function ActualsPage({
       {/* Activity selector */}
       <div
         data-slot="activity-select"
-        className="mb-4 flex flex-wrap gap-2"
+        role="tablist"
         aria-label="Select activity"
+        className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 whitespace-nowrap sm:mx-0 sm:flex-wrap sm:overflow-visible sm:whitespace-normal sm:px-0"
       >
         {ACTIVITY_KEYS.map((key: ActivityKey) => {
           const isActive = key === activityKey;
@@ -124,7 +125,9 @@ export default async function ActualsPage({
               key={key}
               href={`/actuals?activity=${key}`}
               data-activity={key}
-              className={`rounded-md border px-3 py-1.5 text-sm font-medium ${
+              role="tab"
+              aria-selected={isActive}
+              className={`inline-flex min-h-11 shrink-0 items-center rounded-md border px-3.5 text-sm font-medium ${
                 isActive
                   ? "border-neutral-900 bg-neutral-900 text-white"
                   : "border-neutral-200 hover:bg-neutral-50"
@@ -151,17 +154,62 @@ export default async function ActualsPage({
         </div>
       ) : (
         <section className="rounded-xl border border-neutral-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-neutral-200 p-4">
-            <h2 className="text-base font-semibold">
-              {ACTIVITIES[activityKey].label}{" "}
-              <span className="ml-1 text-sm font-normal text-neutral-500">
-                {activePeriod.label} · {planRows.length} plan{" "}
-                {planRows.length === 1 ? "row" : "rows"} · {executions.length}{" "}
-                execution{executions.length === 1 ? "" : "s"}
-              </span>
-            </h2>
+          <div className="flex flex-col gap-2 border-b border-neutral-200 p-4 sm:flex-row sm:items-baseline sm:justify-between">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h2 className="text-base font-semibold">
+                {ACTIVITIES[activityKey].label}
+              </h2>
+              {planRows.length - executions.length > 0 ? (
+                <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
+                  {planRows.length - executions.length} to record
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                  All recorded
+                </span>
+              )}
+            </div>
+            <dl className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-neutral-500">
+              <div>
+                <dt className="sr-only">Period</dt>
+                <dd>{activePeriod.label}</dd>
+              </div>
+              <div>
+                <dt className="inline">Plan rows: </dt>
+                <dd className="inline font-semibold text-neutral-900">
+                  {planRows.length}
+                </dd>
+              </div>
+              <div>
+                <dt className="inline">Executions: </dt>
+                <dd className="inline font-semibold text-neutral-900">
+                  {executions.length}
+                </dd>
+              </div>
+            </dl>
           </div>
-          <div className="p-4">
+          <details className="border-b border-neutral-200 px-4 py-2 text-xs text-neutral-600">
+            <summary className="cursor-pointer font-medium text-neutral-700 hover:text-neutral-900">
+              How to record an execution
+            </summary>
+            <p className="mt-2 leading-relaxed">
+              Click any editable cell on a plan row to enter execution details
+              (sq ft, status, dates, coordinates). The row turns from a
+              placeholder into a saved execution as soon as you tab out — no
+              separate save button per row.
+              {ACTIVITIES[activityKey].type === "item-list" ? (
+                <>
+                  {" "}
+                  For POP / Dealer Kit, click the row to open the kit modal
+                  and pick line items.
+                </>
+              ) : null}
+            </p>
+          </details>
+          <p className="border-b border-neutral-200 px-4 py-2 text-xs text-neutral-500 lg:hidden">
+            Scroll horizontally to see all columns.
+          </p>
+          <div className="overflow-x-auto p-4">
             <ActualsGrid
               initialRows={initialRows}
               activityKey={activityKey}

@@ -47,22 +47,26 @@ export default async function PlansPage() {
   return (
     <div className="mx-auto grid max-w-5xl gap-6">
       <header>
-        <h1 className="text-xl font-semibold">Plans</h1>
-        <p className="mt-1 text-sm text-neutral-600">
-          The approved plan for each activity in the active period. Re-uploading is
-          non-destructive — existing actuals stay attached, and removing a dealer with
-          recorded actuals is blocked at the database.
+        <h1 className="text-2xl font-semibold tracking-tight">Plans</h1>
+        <p className="mt-2 text-sm text-neutral-600">
+          The approved plan for each activity in the active period.
         </p>
+        <details className="mt-2 text-sm text-neutral-600">
+          <summary className="cursor-pointer text-xs font-medium text-neutral-500 hover:text-neutral-900">
+            How re-upload works
+          </summary>
+          <p className="mt-2 text-xs text-neutral-600">
+            Re-uploading is non-destructive — existing actuals stay attached, and
+            removing a dealer with recorded actuals is blocked at the database.
+          </p>
+        </details>
       </header>
 
       <section className="rounded-xl border border-neutral-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-neutral-200 p-4">
+        <div className="flex flex-col gap-3 border-b border-neutral-200 p-4 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-base font-semibold">
             {activePeriod ? (
-              <>
-                Plan rows for{" "}
-                <span className="font-mono text-sm">{activePeriod.label}</span>
-              </>
+              <>Plan rows for {activePeriod.label}</>
             ) : (
               "Plan rows"
             )}
@@ -70,7 +74,7 @@ export default async function PlansPage() {
           <Link
             href="/plans/upload"
             data-slot="upload-cta"
-            className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-neutral-800 aria-disabled:pointer-events-none aria-disabled:opacity-50"
+            className="inline-flex min-h-11 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800 aria-disabled:pointer-events-none aria-disabled:opacity-50"
             aria-disabled={!activePeriod}
           >
             Upload a plan
@@ -86,44 +90,58 @@ export default async function PlansPage() {
             before uploading a plan.
           </p>
         ) : (
-          <div
+          <ul
             data-slot="plan-grid"
-            className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3"
+            className="divide-y divide-neutral-200"
           >
-            {ACTIVITY_KEYS.map((activityKey: ActivityKey) => {
-              const count = countMap.get(activityKey) ?? 0;
-              const href = `/plans/upload?activity=${activityKey}&periodId=${activePeriod.id}`;
-              return (
-                <Link
-                  key={activityKey}
-                  href={href}
-                  data-slot="plan-cell"
-                  data-activity={activityKey}
-                  data-period-id={activePeriod.id}
-                  className="block rounded-lg border border-neutral-200 p-3 hover:border-neutral-400 hover:bg-neutral-50"
-                >
-                  <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-                    {ACTIVITIES[activityKey].label}
-                  </div>
-                  <div className="mt-1 text-sm font-medium">
-                    {activePeriod.label}
-                    <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                      active
-                    </span>
-                  </div>
-                  <div className="mt-2 text-sm text-neutral-700">
-                    {count === 0 ? (
-                      <span className="text-neutral-500">Empty · Upload</span>
-                    ) : (
-                      <span>
-                        <span className="font-semibold">{count}</span> rows · Re-upload
-                      </span>
-                    )}
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
+            {[...ACTIVITY_KEYS]
+              .sort((a, b) => {
+                const ca = countMap.get(a) ?? 0;
+                const cb = countMap.get(b) ?? 0;
+                if ((ca === 0) !== (cb === 0)) return ca === 0 ? -1 : 1;
+                return ACTIVITIES[a].label.localeCompare(ACTIVITIES[b].label);
+              })
+              .map((activityKey: ActivityKey) => {
+                const count = countMap.get(activityKey) ?? 0;
+                const isEmpty = count === 0;
+                const href = `/plans/upload?activity=${activityKey}&periodId=${activePeriod.id}`;
+                return (
+                  <li
+                    key={activityKey}
+                    data-slot="plan-cell"
+                    data-activity={activityKey}
+                    data-period-id={activePeriod.id}
+                    className="flex items-center justify-between gap-4 px-4 py-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold">
+                        {ACTIVITIES[activityKey].label}
+                      </div>
+                      <div className="mt-0.5 text-xs text-neutral-600">
+                        {isEmpty ? (
+                          <span className="text-amber-700">No plan uploaded yet</span>
+                        ) : (
+                          <span>
+                            <span className="font-semibold text-neutral-900">{count}</span>{" "}
+                            {count === 1 ? "row" : "rows"} uploaded
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <Link
+                      href={href}
+                      className={
+                        isEmpty
+                          ? "inline-flex min-h-11 shrink-0 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800"
+                          : "inline-flex min-h-11 shrink-0 items-center justify-center rounded-md border border-neutral-300 px-4 text-sm font-medium hover:bg-neutral-50"
+                      }
+                    >
+                      {isEmpty ? "Upload" : "Re-upload"}
+                    </Link>
+                  </li>
+                );
+              })}
+          </ul>
         )}
       </section>
     </div>

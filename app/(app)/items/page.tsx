@@ -16,29 +16,47 @@ export default async function ItemsPage() {
   return (
     <div className="mx-auto grid max-w-3xl gap-6">
       <header>
-        <h1 className="text-xl font-semibold">Item master</h1>
-        <p className="mt-1 text-sm text-neutral-600">
-          The selectable list used for POP / dealer-kit line items. Retiring an item
-          hides it from the picker without removing past entries — the row stays in
-          the database so existing executions are unaffected.
+        <h1 className="text-2xl font-semibold tracking-tight">Item master</h1>
+        <p className="mt-2 text-sm text-neutral-600">
+          The selectable list used for POP / dealer-kit line items.
         </p>
+        <details className="group mt-2 text-sm text-neutral-600">
+          <summary className="cursor-pointer text-xs font-medium text-neutral-500 hover:text-neutral-900">
+            How retire works
+          </summary>
+          <p className="mt-2 text-xs text-neutral-600">
+            Retiring an item hides it from the picker without removing past entries — the
+            row stays in the database so existing executions are unaffected.
+          </p>
+        </details>
       </header>
 
       <ItemForm />
 
-      <section className="rounded-xl border border-neutral-200 bg-white shadow-sm">
-        <h2 className="border-b border-neutral-200 p-4 text-base font-semibold">
-          Items
+      <section data-slot="items-section" aria-labelledby="items-heading">
+        <h2
+          id="items-heading"
+          className="text-base font-semibold text-neutral-700"
+        >
+          {rows.length === 0
+            ? "No items yet"
+            : `${rows.length} ${rows.length === 1 ? "item" : "items"}`}
         </h2>
         {rows.length === 0 ? (
-          <p className="p-6 text-sm text-neutral-500">No items yet — add one above.</p>
+          <p className="mt-3 rounded-lg border border-dashed border-neutral-300 p-4 text-sm text-neutral-500">
+            Add your first item above. Common starters: Wall stickers, Standees,
+            Hoardings, Vinyl signage, Brochure stand.
+          </p>
         ) : (
-          <ul data-slot="item-list" className="divide-y divide-neutral-200">
+          <ul
+            data-slot="item-list"
+            className="mt-3 divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm"
+          >
             {rows.map((it) => (
               <li
                 key={it.id}
                 data-active={it.active ? "true" : "false"}
-                className={`flex items-center justify-between gap-4 p-4 text-sm ${
+                className={`flex items-center justify-between gap-4 px-4 py-3 text-sm ${
                   it.active ? "" : "bg-neutral-50 text-neutral-400"
                 }`}
               >
@@ -67,7 +85,7 @@ export default async function ItemsPage() {
                   />
                   <button
                     type="submit"
-                    className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs hover:bg-neutral-50"
+                    className="inline-flex h-10 items-center rounded-md border border-neutral-300 px-3 text-xs font-medium hover:bg-neutral-50"
                   >
                     {it.active ? "Retire" : "Restore"}
                   </button>

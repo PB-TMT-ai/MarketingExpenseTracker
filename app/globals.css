@@ -3,6 +3,10 @@
 :root {
   color-scheme: light;
   --ring: oklch(0.205 0 0);
+  /* JSW marketing brand accent — used for the top-of-page bar and
+     the login card crown. Approximated from the JSW red used in
+     internal materials; swap if a formal brand colour is provided. */
+  --brand: #e2231a;
 }
 
 body {

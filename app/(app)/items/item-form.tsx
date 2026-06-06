@@ -28,7 +28,7 @@ export default function ItemForm() {
           name="name"
           required
           placeholder="e.g. Wall stickers"
-          className="mt-1 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm outline-none focus:border-neutral-900"
+          className="mt-1.5 block h-11 w-full rounded-md border border-neutral-300 px-3 text-sm"
         />
       </label>
 
@@ -37,7 +37,7 @@ export default function ItemForm() {
         <input
           name="category"
           placeholder="e.g. POP / Dealer Kit"
-          className="mt-1 w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm outline-none focus:border-neutral-900"
+          className="mt-1.5 block h-11 w-full rounded-md border border-neutral-300 px-3 text-sm"
         />
       </label>
 
@@ -51,7 +51,7 @@ export default function ItemForm() {
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-60"
+          className="inline-flex h-11 items-center justify-center rounded-md bg-neutral-900 px-5 text-sm font-medium text-white transition-opacity hover:bg-neutral-800 disabled:opacity-60"
         >
           {pending ? "Adding…" : "Add item"}
         </button>
