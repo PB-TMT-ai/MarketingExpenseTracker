@@ -19,7 +19,7 @@ const planColumns: readonly FieldDef[] = [
 ];
 
 const actualColumns: readonly FieldDef[] = [
-  { key: "status", label: "Status", kind: "status" },
+  { key: "status", label: "Status", kind: "status", enumValues: ["Pending", "In Progress", "Done"] },
   { key: "latitude", label: "Latitude", kind: "lat" },
   { key: "longitude", label: "Longitude", kind: "long" },
   // Label note: VendorInitials_wallNo_DD/MM/YY

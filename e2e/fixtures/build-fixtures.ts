@@ -67,6 +67,46 @@ function main() {
   writeFileSync(join(outDir, "plan-counter-wall-only-b.xlsx"), onlyB);
   // eslint-disable-next-line no-console
   console.log("wrote e2e/fixtures/plan-counter-wall{,-only-b}.xlsx");
+
+  // --- 03-05 fixtures: POP/Dealer-Kit + Dealer Certificate (one dealer each) ---
+  // Generic single-row plan fixture for any activity, headers in planColumns order.
+  function planFixture(
+    key: string,
+    values: Readonly<Record<string, string | number>>,
+  ): Buffer {
+    const c = getActivity(key);
+    if (!c) throw new Error(`${key} not registered`);
+    const hdr = c.planColumns.map((col) => col.label);
+    const r = c.planColumns.map((col) => values[col.key] ?? "");
+    return buildXlsx([hdr, r]);
+  }
+
+  const who = {
+    region: "West",
+    state: "Maharashtra",
+    district: "Pune",
+    distributor: "ACME Dist",
+  };
+  writeFileSync(
+    join(outDir, "plan-pop-dealer-kit.xlsx"),
+    planFixture("pop-dealer-kit", {
+      ...who,
+      sfid: "SF-POP",
+      dealer: "ACME POP Dealer",
+    }),
+  );
+  writeFileSync(
+    join(outDir, "plan-dealer-certificate.xlsx"),
+    planFixture("dealer-certificate", {
+      ...who,
+      sfid: "SF-CERT",
+      dealer: "ACME Cert Dealer",
+    }),
+  );
+  // eslint-disable-next-line no-console
+  console.log(
+    "wrote e2e/fixtures/plan-pop-dealer-kit.xlsx + plan-dealer-certificate.xlsx",
+  );
 }
 
 main();

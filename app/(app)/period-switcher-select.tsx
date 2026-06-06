@@ -24,7 +24,7 @@ export default function PeriodSwitcherSelect({
         name="id"
         defaultValue={activeId ?? ""}
         onChange={(e) => e.currentTarget.form?.requestSubmit()}
-        className="rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs"
+        className="h-11 rounded-md border border-neutral-300 bg-white px-3 text-sm"
       >
         {periods.map((p) => (
           <option key={p.id} value={p.id}>

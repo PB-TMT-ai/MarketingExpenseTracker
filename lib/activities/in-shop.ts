@@ -18,7 +18,7 @@ const planColumns: readonly FieldDef[] = [
 ];
 
 const actualColumns: readonly FieldDef[] = [
-  { key: "status", label: "Status", kind: "status" },
+  { key: "status", label: "Status", kind: "status", enumValues: ["Pending", "In Progress", "Done"] },
   { key: "length", label: "Length", kind: "number" },
   { key: "breadth", label: "Breadth", kind: "number" },
   {
