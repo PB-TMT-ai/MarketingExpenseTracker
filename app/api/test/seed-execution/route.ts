@@ -5,27 +5,23 @@ import {
   _findPlanRowIdForTest,
   _seedExecutionForTest,
 } from "@/lib/db/plan-rows";
+import { _findExecutionForTest } from "@/lib/db/executions";
 
 /**
- * TEST-ONLY seed helper for the Playwright suite — Plan 02-03.
+ * TEST-ONLY seed helper for the Playwright suite.
  *
- * Why this exists: the blocked-by-actuals e2e (closes COMP-02 user-facing path)
- * needs an `executions` row attached to a known plan_row so that re-uploading
- * a plan missing that SFID triggers the FK RESTRICT and the UI renders
- * `data-slot="blocked-dealers"`. Phase 3 will ship the actuals UI; until then
- * this gated Route Handler is the bridge.
- *
- * Defense-in-depth:
- *   1. NODE_ENV !== "production" — short-circuits with 404 in production.
- *      A back door doesn't exist on the deployed app even if this file is
- *      bundled by accident.
- *   2. Requires the same session cookie as every other Server Action
- *      (jose-signed JWT verified by lib/auth/session). Unauthenticated
- *      callers get 401.
+ * Defense-in-depth (all three gates preserved — T-03-10):
+ *   1. NODE_ENV !== "production" — 404 in production even if bundled by accident.
+ *   2. Requires the session cookie (jose-signed JWT via lib/auth/session).
  *   3. Method = POST only (GET returns 405).
  *
+ * Extended in 03-04 to also return the execution id + version after seeding,
+ * so the e2e actuals conflict test can build a stale-version payload.
+ *
  * Body: JSON `{ periodId: number, activity: string, sfid: string }`.
- * Response: 200 with `{ planRowId }` on success; 4xx with `{ error }` otherwise.
+ * Response:
+ *   200: { planRowId, executionId, version }
+ *   4xx: { error }
  *
  * NEVER call from app code. NEVER reference from a Server Action.
  */
@@ -81,8 +77,24 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
+  // Seed the execution (inserts a row with status='Pending' and unitNo='e2e-seed-1').
   await _seedExecutionForTest(planRowId);
-  return NextResponse.json({ planRowId });
+
+  // 03-04 extension: read back id + version so the e2e conflict test can use them.
+  // _findExecutionForTest is a test-only helper — gate is already in effect above.
+  const exec = await _findExecutionForTest(planRowId);
+  if (exec === null) {
+    return NextResponse.json(
+      { error: "Seed inserted but could not read back execution" },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({
+    planRowId,
+    executionId: exec.id,
+    version: exec.version,
+  });
 }
 
 export async function GET(): Promise<Response> {

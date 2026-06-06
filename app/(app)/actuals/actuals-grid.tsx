@@ -313,6 +313,11 @@ export default function ActualsGrid({
   // ---------------------------------------------------------------------------
   const onGridReady = useCallback((e: GridReadyEvent<UnitRow>) => {
     apiRef.current = e.api;
+    // Dev/test: expose the grid API on window so e2e can call ensureColumnVisible
+    // to scroll off-screen columns into view before interacting with them.
+    if (process.env.NODE_ENV !== "production") {
+      (window as unknown as Record<string, unknown>).__actualsGridApi = e.api;
+    }
   }, []);
 
   // ---------------------------------------------------------------------------
