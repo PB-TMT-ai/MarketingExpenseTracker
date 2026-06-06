@@ -2,6 +2,7 @@
 
 :root {
   color-scheme: light;
+  --ring: oklch(0.205 0 0);
 }
 
 body {
@@ -18,4 +19,12 @@ h3 {
 
 p {
   text-wrap: pretty;
+}
+
+/* Branded focus-visible ring on every focusable element.
+   Replaces the browser default 1px hairline (F-008). */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 0.375rem;
 }

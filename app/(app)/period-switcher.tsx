@@ -28,11 +28,7 @@ export default async function PeriodSwitcher() {
   }
 
   return (
-    <form
-      data-slot="period-switcher"
-      action={setActivePeriodForm}
-      className="text-xs"
-    >
+    <form data-slot="period-switcher" action={setActivePeriodForm}>
       <PeriodSwitcherSelect periods={all} activeId={active?.id ?? null} />
     </form>
   );

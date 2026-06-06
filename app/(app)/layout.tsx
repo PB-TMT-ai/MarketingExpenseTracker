@@ -26,7 +26,10 @@ export default async function AppLayout({
     <div className="min-h-screen">
       <header className="flex items-center justify-between border-b border-neutral-200 bg-white px-6 py-3">
         <div className="flex items-center gap-4">
-          <Link href="/" className="font-semibold">
+          <Link
+            href="/"
+            className="inline-flex min-h-11 items-center font-semibold"
+          >
             Marketing Expense Tracker
           </Link>
           <PeriodSwitcher />
@@ -34,32 +37,32 @@ export default async function AppLayout({
         <nav className="flex items-center gap-2 text-sm">
           <Link
             href="/periods"
-            className="rounded-md border border-neutral-200 px-3 py-1.5 hover:bg-neutral-50"
+            className="inline-flex min-h-11 items-center rounded-md border border-neutral-200 px-3.5 hover:bg-neutral-50"
           >
             Periods
           </Link>
           <Link
             href="/plans"
-            className="rounded-md border border-neutral-200 px-3 py-1.5 hover:bg-neutral-50"
+            className="inline-flex min-h-11 items-center rounded-md border border-neutral-200 px-3.5 hover:bg-neutral-50"
           >
             Plans
           </Link>
           <Link
             href="/items"
-            className="rounded-md border border-neutral-200 px-3 py-1.5 hover:bg-neutral-50"
+            className="inline-flex min-h-11 items-center rounded-md border border-neutral-200 px-3.5 hover:bg-neutral-50"
           >
             Items
           </Link>
           <Link
             href="/actuals"
-            className="rounded-md border border-neutral-200 px-3 py-1.5 hover:bg-neutral-50"
+            className="inline-flex min-h-11 items-center rounded-md border border-neutral-200 px-3.5 hover:bg-neutral-50"
           >
             Actuals
           </Link>
           <form action={logout}>
             <button
               type="submit"
-              className="rounded-md border border-neutral-300 px-3 py-1.5 hover:bg-neutral-50"
+              className="inline-flex min-h-11 items-center rounded-md border border-neutral-300 px-3.5 hover:bg-neutral-50"
             >
               Log out
             </button>
