@@ -114,8 +114,9 @@ export default async function ActualsPage({
       {/* Activity selector */}
       <div
         data-slot="activity-select"
-        className="mb-4 flex flex-wrap gap-2"
+        role="tablist"
         aria-label="Select activity"
+        className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 whitespace-nowrap sm:mx-0 sm:flex-wrap sm:overflow-visible sm:whitespace-normal sm:px-0"
       >
         {ACTIVITY_KEYS.map((key: ActivityKey) => {
           const isActive = key === activityKey;
@@ -124,7 +125,9 @@ export default async function ActualsPage({
               key={key}
               href={`/actuals?activity=${key}`}
               data-activity={key}
-              className={`rounded-md border px-3 py-1.5 text-sm font-medium ${
+              role="tab"
+              aria-selected={isActive}
+              className={`inline-flex min-h-11 shrink-0 items-center rounded-md border px-3.5 text-sm font-medium ${
                 isActive
                   ? "border-neutral-900 bg-neutral-900 text-white"
                   : "border-neutral-200 hover:bg-neutral-50"
@@ -174,7 +177,10 @@ export default async function ActualsPage({
               </div>
             </dl>
           </div>
-          <div className="p-4">
+          <p className="border-b border-neutral-200 px-4 py-2 text-xs text-neutral-500 lg:hidden">
+            Scroll horizontally to see all columns.
+          </p>
+          <div className="overflow-x-auto p-4">
             <ActualsGrid
               initialRows={initialRows}
               activityKey={activityKey}
