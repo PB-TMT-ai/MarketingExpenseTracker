@@ -70,10 +70,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. The system auto-calculates derived values (sq ft from dimensions; total cost from sq ft × rate), stores them, and shows derived cells as read-only.
   5. A user can record POP / dealer-kit executions as multiple line items via a popup (item × qty × rate → total) rolled up to the dealer row, and Dealer Certificate entry captures issuance status, date, and cost; edits are batched with a clear saved/dirty indicator.
 **Plans**: 5 plans
-- [ ] 03-01-PLAN.md — Throwaway AG Grid Community spike with GO/NO-GO vs TanStack fallback (D3-00)
-- [ ] 03-02-PLAN.md — Pure lib/actuals/ core: calc engine, flat row model, registry→colDef mapper, cascading filter + status enumValues
-- [ ] 03-03-PLAN.md — executions data layer + saveExecutionsBatch action (per-unit version optimistic concurrency, server recompute)
-- [ ] 03-04-PLAN.md — End-to-end grid slice: page + AG Grid client + filter bar + save bar + Actuals nav + e2e
+- [x] 03-01-PLAN.md — Throwaway AG Grid Community spike with GO/NO-GO vs TanStack fallback (D3-00)
+- [x] 03-02-PLAN.md — Pure lib/actuals/ core: calc engine, flat row model, registry→colDef mapper, cascading filter + status enumValues
+- [x] 03-03-PLAN.md — executions data layer + saveExecutionsBatch action (per-unit version optimistic concurrency, server recompute)
+- [x] 03-04-PLAN.md — End-to-end grid slice: page + AG Grid client + filter bar + save bar + Actuals nav + e2e
 - [ ] 03-05-PLAN.md — POP multi-item modal (GRID-06) + Dealer Certificate inline (GRID-08) + POP/cert e2e
 **UI hint**: yes
 

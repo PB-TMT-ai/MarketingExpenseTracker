@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Phase 3 context gathered
-last_updated: "2026-06-06T06:47:23.166Z"
-last_activity: 2026-06-05
+stopped_at: Phase 3 Plan 03-04 complete (actuals grid UI integration)
+last_updated: "2026-06-06T07:21:00.000Z"
+last_activity: 2026-06-06
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 13
-  completed_plans: 10
+  completed_plans: 12
   percent: 40
 ---
 
@@ -26,19 +26,19 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 ## Current Position
 
 Phase: 3 (in progress)
-Plan: 03-02 DONE
-Status: Phase 3 Wave 2 complete — pure actuals core (calc/rows/colDefs/filter) shipped; 03-03 (Server Action) and 03-04 (React grid) next
+Plan: 03-04 DONE
+Status: Phase 3 Wave 3 complete — /actuals grid shipped end-to-end (page + AG Grid + filter bar + save bar + e2e); 03-05 (POP modal + Dealer-Certificate polish) next
 Last activity: 2026-06-06
 
 Phase 3 Wave structure:
 
 - Wave 0: 03-01 (AG Grid spike — GO verdict) — DONE
-- Wave 2: 03-02 (pure lib/actuals/* core; this plan) — DONE
-- Wave 2: 03-03 (executions data layer + Server Action — parallel to 03-02) — DONE
-- Wave 3: 03-04 (React ActualsGrid component — depends on 03-01, 03-02, 03-03) — TODO
-- Wave 4: 03-05 (POP modal + end-to-end — depends on 03-04) — TODO
+- Wave 2: 03-02 (pure lib/actuals/* core) — DONE
+- Wave 2: 03-03 (executions data layer + Server Action) — DONE
+- Wave 3: 03-04 (React ActualsGrid component — /actuals route, filter bar, save bar, e2e) — DONE
+- Wave 4: 03-05 (POP modal + Dealer-Certificate polish — depends on 03-04) — TODO
 
-Progress: [████░░░░░░] 40% (2/5 Phase 3 plans done)
+Progress: [████████░░] 80% (4/5 Phase 3 plans done)
 
 ## Performance Metrics
 
@@ -71,6 +71,8 @@ Progress: [████░░░░░░] 40% (2/5 Phase 3 plans done)
 | Phase 02 P03 | 45 | 3 tasks | 13 files |
 | Phase 03 P01 | 15 min | 1 task | 2 files |
 | Phase 03 P02 | 16 min | 3 tasks | 13 files |
+| Phase 03 P03 | 12 min | 3 tasks | 4 files |
+| Phase 03 P04 | 30 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -94,6 +96,9 @@ Recent decisions affecting current work:
 - [03-02]: num() treats empty string as null (Number("") === 0 in JS, silently finite) — explicit guard `if (s === "") return null` added.
 - [03-02]: Dotted-field binding (plan.*, fields.*) confirmed A1 from spike; colDefs also sets colId=key on derived cols for lookup stability.
 - [03-02]: matchesSfid is a dedicated plan.sfid predicate (not AG Grid quickFilterText) per A6 finding — prevents false matches on region/dealer columns.
+- [03-04]: SaveBar uses useActionState with an inline async wrapper (not a direct Server Action reference) to capture the current dirtyRows closure at click time.
+- [03-04]: window.__actualsGridApi exposed in dev mode for e2e column-virtualization (ensureColumnVisible); production-gated by NODE_ENV check.
+- [03-04]: Conflict rows marked via __conflict flag in row.fields; rendered as banners outside the AG Grid (data-slot=row-conflict); reloads full page to fetch server state.
 
 ### Pending Todos
 
@@ -123,6 +128,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-06T06:46:55.000Z
-Stopped at: Phase 3 Plan 03-02 complete (pure actuals core)
-Resume file: .planning/phases/03-actuals-grid/03-02-SUMMARY.md
+Last session: 2026-06-06T07:21:00.000Z
+Stopped at: Phase 3 Plan 03-04 complete (actuals grid UI integration)
+Resume file: .planning/phases/03-actuals-grid/03-04-SUMMARY.md
