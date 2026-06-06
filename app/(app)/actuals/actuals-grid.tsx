@@ -33,13 +33,14 @@ import {
   type CellValueChangedEvent,
 } from "ag-grid-community";
 import { buildColumnDefs } from "@/lib/actuals/colDefs";
-import { cloneUnitForAdd, type UnitRow } from "@/lib/actuals/rows";
-import { setOverride, clearOverride, isOverridden } from "@/lib/actuals/calc";
+import { cloneUnitForAdd, type UnitRow, type PopLineInput } from "@/lib/actuals/rows";
+import { setOverride, clearOverride } from "@/lib/actuals/calc";
 import { matchesFacets, matchesSfid, type FacetSelections } from "@/lib/actuals/filter";
 import { getActivity } from "@/lib/activities/registry";
 import { type SaveBatchState } from "@/lib/actions/executions";
 import FilterBar from "./filter-bar";
 import SaveBar from "./save-bar";
+import PopModal from "./pop-modal";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -73,6 +74,9 @@ export default function ActualsGrid({
 
   // AG Grid API ref
   const apiRef = useRef<GridApi<UnitRow> | null>(null);
+
+  // POP/Dealer-Kit modal: which kit row is open (rowKey), or null when closed (D3-13/14).
+  const [popRowKey, setPopRowKey] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
   // Row data state — single source of truth for the grid rows.
@@ -123,6 +127,41 @@ export default function ActualsGrid({
   // ---------------------------------------------------------------------------
   const columnDefs = useMemo(() => {
     if (!activityCfg) return [];
+
+    // POP/Dealer-Kit (item-list): a kit is ONE row per dealer edited via a modal, not
+    // inline per-line cells. Show plan columns (read-only) + a single "Kit" column whose
+    // button opens the multi-item modal. No add-unit (one kit per dealer).
+    if (activityCfg.type === "item-list") {
+      const planCols = buildColumnDefs(activityCfg).slice(
+        0,
+        activityCfg.planColumns.length,
+      );
+      return [
+        ...planCols,
+        {
+          headerName: "Kit",
+          colId: "__kit",
+          minWidth: 240,
+          editable: false,
+          cellRenderer: (p: { data?: UnitRow }) => {
+            if (!p.data) return null;
+            const ls = p.data.popLines ?? [];
+            const total = ls.reduce((s, l) => s + (l.lineTotal ?? 0), 0);
+            return (
+              <button
+                data-slot="pop-edit"
+                onClick={() => setPopRowKey(p.data!.rowKey)}
+                className="rounded border border-neutral-300 px-2 py-0.5 text-xs hover:bg-neutral-50"
+              >
+                <span data-slot="pop-kit-count">{ls.length}</span> item
+                {ls.length === 1 ? "" : "s"} · ₹{total.toFixed(2)} — Edit
+              </button>
+            );
+          },
+        },
+      ];
+    }
+
     const cols = buildColumnDefs(activityCfg);
     // Append a "+ Add unit" action column at the far right.
     return [
@@ -230,6 +269,35 @@ export default function ActualsGrid({
     });
     // Let AG Grid know rowData changed (it will reconcile via getRowId).
   }
+
+  // ---------------------------------------------------------------------------
+  // handlePopConfirm — the POP modal writes its lines back into the kit row.
+  // Sets popLines + rolled-up totalCost, marks dirty (the Save bar flushes it via
+  // saveExecutionsBatch → savePopKit). Does NOT persist directly (D3-13/14).
+  // ---------------------------------------------------------------------------
+  const handlePopConfirm = useCallback(
+    (rowKey: string, lines: PopLineInput[]) => {
+      setRowMap((prev) => {
+        const next = new Map(prev);
+        const row = next.get(rowKey);
+        if (!row) return prev;
+        const total =
+          Math.round(lines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
+        next.set(rowKey, {
+          ...row,
+          popLines: lines,
+          fields: { ...row.fields, totalCost: total },
+          dirty: true,
+          isPlaceholder: false,
+        });
+        return next;
+      });
+      setPopRowKey(null);
+      const node = apiRef.current?.getRowNode(rowKey);
+      if (node) apiRef.current?.refreshCells({ rowNodes: [node], force: true });
+    },
+    [],
+  );
 
   // ---------------------------------------------------------------------------
   // clearOverrideForRow — called from a "reset to formula" affordance (inline button).
@@ -388,6 +456,22 @@ export default function ActualsGrid({
             </button>
           </div>
         ))}
+
+      {/* POP/Dealer-Kit multi-item modal (item-list activities) */}
+      {popRowKey &&
+        (() => {
+          const row = rowMap.get(popRowKey);
+          if (!row) return null;
+          return (
+            <PopModal
+              planContext={row.plan}
+              initialLines={row.popLines ?? []}
+              items={items}
+              onConfirm={(lines) => handlePopConfirm(popRowKey, lines)}
+              onClose={() => setPopRowKey(null)}
+            />
+          );
+        })()}
 
       {/* Save bar — persists dirty rows, handles conflict results */}
       <SaveBar

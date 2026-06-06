@@ -47,6 +47,21 @@ export type UnitRow = {
   isPlaceholder: boolean;
   /** true when any field has been edited since last save */
   dirty: boolean;
+  /**
+   * POP/Dealer-Kit line items (item-list activities ONLY; undefined otherwise).
+   * Populated from execution_items on load (so re-opening a saved kit shows its lines)
+   * and rewritten by the POP modal. Sent in the save patch so the server's savePopKit
+   * persists one execution + N execution_items (D3-13/14).
+   */
+  popLines?: PopLineInput[];
+};
+
+/** One POP/Dealer-Kit line item carried on a kit UnitRow (numbers, not Drizzle strings). */
+export type PopLineInput = {
+  itemName: string;
+  qty: number;
+  rate: number;
+  lineTotal: number;
 };
 
 /**

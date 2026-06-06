@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { getActivePeriod } from "@/lib/periods/active";
 import { listByPeriodActivity } from "@/lib/db/plan-rows";
-import { listExecutionsByPeriodActivity } from "@/lib/db/executions";
+import {
+  listExecutionsByPeriodActivity,
+  listKitLines,
+} from "@/lib/db/executions";
 import { listItems } from "@/lib/db/items";
-import { buildRowModel } from "@/lib/actuals/rows";
+import { buildRowModel, type PopLineInput } from "@/lib/actuals/rows";
 import { ACTIVITIES, ACTIVITY_KEYS } from "@/lib/activities/registry";
 import type { ActivityKey } from "@/lib/activities/types";
 import ActualsGrid from "./actuals-grid";
@@ -70,7 +73,30 @@ export default async function ActualsPage({
   // Assemble the flat row model server-side (zero-execution dealers → placeholder rows).
   const initialRows = buildRowModel(planRows, executions);
 
-  // Active items for POP modal (03-05 will wire the modal; pass now for stable contract).
+  // POP/Dealer-Kit (item-list): load existing kit lines and attach to their rows so
+  // re-opening a saved kit shows its items (and a re-save doesn't wipe them, since
+  // savePopKit is replace-all). Other activity types carry no popLines.
+  if (ACTIVITIES[activityKey].type === "item-list" && executions.length > 0) {
+    const lines = await listKitLines(executions.map((e) => e.id));
+    const byExec = new Map<number, PopLineInput[]>();
+    for (const l of lines) {
+      const arr = byExec.get(l.executionId) ?? [];
+      arr.push({
+        itemName: l.itemName,
+        qty: Number(l.qty),
+        rate: Number(l.rate),
+        lineTotal: Number(l.lineTotal),
+      });
+      byExec.set(l.executionId, arr);
+    }
+    for (const row of initialRows) {
+      if (row.executionId != null && byExec.has(row.executionId)) {
+        row.popLines = byExec.get(row.executionId);
+      }
+    }
+  }
+
+  // Active items for the POP modal picker (ACTIVE only; itemName is snapshotted at entry).
   const activeItems = allItems.filter((i) => i.active);
 
   return (

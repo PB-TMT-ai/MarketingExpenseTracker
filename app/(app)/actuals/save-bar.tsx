@@ -52,7 +52,9 @@ export default function SaveBar({
         version: row.version,
         fields: row.fields,
         isPlaceholder: row.isPlaceholder,
-        // popLines omitted for non-POP activities (03-05 will wire POP modal)
+        // POP/Dealer-Kit kit lines (undefined for non-POP rows → normal insert/update path;
+        // an array → the action routes through savePopKit: one execution + N execution_items).
+        popLines: row.popLines,
       }));
 
       return saveExecutionsBatch(undefined, {

@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "./index";
 import { executions, executionItems, planRows } from "./schema";
 
@@ -255,6 +255,46 @@ export async function listExecutionsByPeriodActivity(
     totalSqft: r.totalSqft,
     fields: r.fields as Record<string, unknown>,
     version: Number(r.version),
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// listKitLines — load execution_items for a set of kit executions (POP/Dealer-Kit)
+// so the grid can pre-populate the kit modal and show line counts on load. Without
+// this, re-opening a saved kit shows no lines and a re-save (savePopKit = replace-all)
+// would silently wipe them. Returns [] for an empty id set. Numeric cols arrive as
+// STRING (Drizzle numeric) — the caller converts for display.
+// ---------------------------------------------------------------------------
+
+export type KitLineRecord = {
+  executionId: number;
+  itemName: string;
+  qty: string;
+  rate: string;
+  lineTotal: string;
+};
+
+export async function listKitLines(
+  executionIds: number[],
+): Promise<KitLineRecord[]> {
+  if (executionIds.length === 0) return [];
+  const rows = await db
+    .select({
+      executionId: executionItems.executionId,
+      itemName: executionItems.itemName,
+      qty: executionItems.qty,
+      rate: executionItems.rate,
+      lineTotal: executionItems.lineTotal,
+    })
+    .from(executionItems)
+    .where(inArray(executionItems.executionId, executionIds))
+    .orderBy(executionItems.id);
+  return rows.map((r) => ({
+    executionId: Number(r.executionId),
+    itemName: r.itemName,
+    qty: r.qty,
+    rate: r.rate,
+    lineTotal: r.lineTotal,
   }));
 }
 
