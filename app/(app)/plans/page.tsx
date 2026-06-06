@@ -49,10 +49,17 @@ export default async function PlansPage() {
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Plans</h1>
         <p className="mt-2 text-sm text-neutral-600">
-          The approved plan for each activity in the active period. Re-uploading is
-          non-destructive — existing actuals stay attached, and removing a dealer with
-          recorded actuals is blocked at the database.
+          The approved plan for each activity in the active period.
         </p>
+        <details className="mt-2 text-sm text-neutral-600">
+          <summary className="cursor-pointer text-xs font-medium text-neutral-500 hover:text-neutral-900">
+            How re-upload works
+          </summary>
+          <p className="mt-2 text-xs text-neutral-600">
+            Re-uploading is non-destructive — existing actuals stay attached, and
+            removing a dealer with recorded actuals is blocked at the database.
+          </p>
+        </details>
       </header>
 
       <section className="rounded-xl border border-neutral-200 bg-white shadow-sm">
