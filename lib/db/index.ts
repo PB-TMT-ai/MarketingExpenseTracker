@@ -25,7 +25,11 @@ const isPostgres = /^postgres(ql)?:\/\//.test(url);
 function createDb() {
   if (isPostgres) {
     // Supabase transaction pooler (:6543) does NOT support prepared statements.
-    return postgresDrizzle(postgres(url, { prepare: false }), { schema });
+    // Force TLS: Supabase always requires it, so don't depend on the URL carrying
+    // `?sslmode=require` (a common deploy footgun — a missing param = every query throws).
+    return postgresDrizzle(postgres(url, { prepare: false, ssl: "require" }), {
+      schema,
+    });
   }
   return pgliteDrizzle(new PGlite(url), { schema });
 }
