@@ -155,9 +155,20 @@ export default async function ActualsPage({
       ) : (
         <section className="rounded-xl border border-neutral-200 bg-white shadow-sm">
           <div className="flex flex-col gap-2 border-b border-neutral-200 p-4 sm:flex-row sm:items-baseline sm:justify-between">
-            <h2 className="text-base font-semibold">
-              {ACTIVITIES[activityKey].label}
-            </h2>
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h2 className="text-base font-semibold">
+                {ACTIVITIES[activityKey].label}
+              </h2>
+              {planRows.length - executions.length > 0 ? (
+                <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
+                  {planRows.length - executions.length} to record
+                </span>
+              ) : (
+                <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                  All recorded
+                </span>
+              )}
+            </div>
             <dl className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-neutral-500">
               <div>
                 <dt className="sr-only">Period</dt>
@@ -177,6 +188,24 @@ export default async function ActualsPage({
               </div>
             </dl>
           </div>
+          <details className="border-b border-neutral-200 px-4 py-2 text-xs text-neutral-600">
+            <summary className="cursor-pointer font-medium text-neutral-700 hover:text-neutral-900">
+              How to record an execution
+            </summary>
+            <p className="mt-2 leading-relaxed">
+              Click any editable cell on a plan row to enter execution details
+              (sq ft, status, dates, coordinates). The row turns from a
+              placeholder into a saved execution as soon as you tab out — no
+              separate save button per row.
+              {ACTIVITIES[activityKey].type === "item-list" ? (
+                <>
+                  {" "}
+                  For POP / Dealer Kit, click the row to open the kit modal
+                  and pick line items.
+                </>
+              ) : null}
+            </p>
+          </details>
           <p className="border-b border-neutral-200 px-4 py-2 text-xs text-neutral-500 lg:hidden">
             Scroll horizontally to see all columns.
           </p>
