@@ -35,14 +35,14 @@ Requirements for the initial release. Each maps to a roadmap phase.
 
 ### Actuals Grid
 
-- [ ] **GRID-01**: User can view a period's plan rows for an activity in an editable, spreadsheet-style grid
-- [ ] **GRID-02**: Plan columns are read-only; actual columns are editable inline
-- [ ] **GRID-03**: User can filter rows by Region, State, District, Distributor, and Status, and search by SFID
-- [ ] **GRID-04**: System auto-calculates derived values (sq ft from dimensions; total cost from sq ft × rate) and stores them; derived cells are read-only
-- [ ] **GRID-05**: A planned dealer (SFID) can have multiple execution entries (e.g. several walls/boards), each with its own measurements and cost, summing toward that dealer's plan
-- [ ] **GRID-06**: User can record POP / dealer-kit executions as multiple line items via a popup (item, qty, rate → total), rolled up to the dealer row
-- [ ] **GRID-07**: Edits are saved reliably (batched, with a clear saved/dirty indicator) and the grid stays responsive at large row counts
-- [ ] **GRID-08**: Dealer Certificate entry captures issuance status, date, and cost
+- [x] **GRID-01**: User can view a period's plan rows for an activity in an editable, spreadsheet-style grid
+- [x] **GRID-02**: Plan columns are read-only; actual columns are editable inline
+- [x] **GRID-03**: User can filter rows by Region, State, District, Distributor, and Status, and search by SFID
+- [x] **GRID-04**: System auto-calculates derived values (sq ft from dimensions; total cost from sq ft × rate) and stores them; derived cells are auto-filled but **overridable** — a manual override is sticky, with a "reset to formula" affordance (per decision D3-05)
+- [x] **GRID-05**: A planned dealer (SFID) can have multiple execution entries (e.g. several walls/boards), each with its own measurements and cost, summing toward that dealer's plan
+- [x] **GRID-06**: User can record POP / dealer-kit executions as multiple line items via a popup (item, qty, rate → total), rolled up to the dealer row
+- [x] **GRID-07**: Edits are saved reliably (batched, with a clear saved/dirty indicator) and the grid stays responsive at large row counts
+- [x] **GRID-08**: Dealer Certificate entry captures issuance status, date, and cost
 
 ### Compliance
 
@@ -109,14 +109,14 @@ Which phases cover which requirements. Populated during roadmap creation.
 | PLAN-05 | Phase 2 — Plan Upload & Periods | Complete |
 | PLAN-06 | Phase 2 — Plan Upload & Periods | Complete |
 | COMP-02 | Phase 2 — Plan Upload & Periods | Complete |
-| GRID-01 | Phase 3 — Actuals Grid | Pending |
-| GRID-02 | Phase 3 — Actuals Grid | Pending |
-| GRID-03 | Phase 3 — Actuals Grid | Pending |
-| GRID-04 | Phase 3 — Actuals Grid | Pending |
-| GRID-05 | Phase 3 — Actuals Grid | Pending |
-| GRID-06 | Phase 3 — Actuals Grid | Pending |
-| GRID-07 | Phase 3 — Actuals Grid | Pending |
-| GRID-08 | Phase 3 — Actuals Grid | Pending |
+| GRID-01 | Phase 3 — Actuals Grid | Complete |
+| GRID-02 | Phase 3 — Actuals Grid | Complete |
+| GRID-03 | Phase 3 — Actuals Grid | Complete |
+| GRID-04 | Phase 3 — Actuals Grid | Complete |
+| GRID-05 | Phase 3 — Actuals Grid | Complete |
+| GRID-06 | Phase 3 — Actuals Grid | Complete |
+| GRID-07 | Phase 3 — Actuals Grid | Complete |
+| GRID-08 | Phase 3 — Actuals Grid | Complete |
 | COMP-03 | Phase 4 — Compliance & Dashboard | Pending |
 | DASH-01 | Phase 4 — Compliance & Dashboard | Pending |
 | DASH-02 | Phase 4 — Compliance & Dashboard | Pending |
