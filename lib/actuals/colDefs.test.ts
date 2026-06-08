@@ -128,7 +128,7 @@ describe("buildColumnDefs — actual columns cellEditor mapping", () => {
     const cfg = getActivity("in-shop")!;
     const cols = buildColumnDefs(cfg);
     const col = cols.find((c) => c.field === "fields.status");
-    expect(col?.cellEditorParams).toEqual({ values: ["Pending", "In Progress", "Done"] });
+    expect(col?.cellEditorParams).toEqual({ values: ["Pending", "In Progress", "Done", "Cancelled"] });
   });
 });
 

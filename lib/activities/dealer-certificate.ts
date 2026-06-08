@@ -1,4 +1,5 @@
 import type { ActivityConfig, FieldDef } from "./types";
+import { STATUS_VALUES } from "./status";
 
 /**
  * Dealer Certificate — type `status`. Plan sheet uses the shared who/where set;
@@ -15,7 +16,7 @@ const planColumns: readonly FieldDef[] = [
 ];
 
 const actualColumns: readonly FieldDef[] = [
-  { key: "status", label: "Status", kind: "status", enumValues: ["Pending", "In Progress", "Done"] },
+  { key: "status", label: "Status", kind: "status", enumValues: STATUS_VALUES },
   { key: "issuanceDate", label: "Date", kind: "date" },
   { key: "cost", label: "Cost", kind: "currency" },
 ];

@@ -1,4 +1,5 @@
 import type { ActivityConfig, FieldDef } from "./types";
+import { STATUS_VALUES } from "./status";
 
 /**
  * GSB — type `measurement`. Shares its column shape with NLB (sibling file `nlb.ts`),
@@ -16,7 +17,7 @@ const planColumns: readonly FieldDef[] = [
 ];
 
 const actualColumns: readonly FieldDef[] = [
-  { key: "status", label: "Status", kind: "status", enumValues: ["Pending", "In Progress", "Done"] },
+  { key: "status", label: "Status", kind: "status", enumValues: STATUS_VALUES },
   { key: "gsbType", label: "GSB type", kind: "text" },
   { key: "length", label: "Length", kind: "number" },
   { key: "breadth", label: "Breadth", kind: "number" },
