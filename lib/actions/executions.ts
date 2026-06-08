@@ -12,6 +12,7 @@ import {
   savePopKit,
   type PopLine,
 } from "../db/executions";
+import { insertExceptionPlanRow } from "../db/plan-rows";
 
 /**
  * saveExecutionsBatch — Server Action for the actuals grid Save bar.
@@ -160,6 +161,46 @@ function applyServerCalc(
 }
 
 // ---------------------------------------------------------------------------
+// Numeric-column promotion (shared by saveExecutionsBatch + addOffPlanExecution)
+// ---------------------------------------------------------------------------
+
+/**
+ * Split a server-recomputed `fields` blob into the promoted numeric/status columns and
+ * the remaining jsonb tail, EXACTLY as saveExecutionsBatch does (lines 251-268). Kept as
+ * one helper so the off-plan-exception path and the batch path can never drift apart
+ * (Pitfall 9 — one authoritative calc path).
+ *
+ * totalSqft/totalCost/perUnitCost → String(...) | null (numeric(14,2) boundary).
+ * status/unitNo → string | null. The returned `jsonbFields` excludes all five promoted
+ * keys so they are not duplicated in both the column and the jsonb blob.
+ */
+function promoteExecutionColumns(serverFields: Record<string, unknown>): {
+  status: string | null;
+  unitNo: string | null;
+  perUnitCost: string | null;
+  totalCost: string | null;
+  totalSqft: string | null;
+  jsonbFields: Record<string, unknown>;
+} {
+  const totalSqft =
+    serverFields["totalSqft"] != null ? String(serverFields["totalSqft"]) : null;
+  const totalCost =
+    serverFields["totalCost"] != null ? String(serverFields["totalCost"]) : null;
+  const perUnitCost =
+    serverFields["perUnitCost"] != null ? String(serverFields["perUnitCost"]) : null;
+  const status =
+    typeof serverFields["status"] === "string" ? serverFields["status"] : null;
+  const unitNo =
+    typeof serverFields["unitNo"] === "string" ? serverFields["unitNo"] : null;
+
+  const { totalSqft: _ts, totalCost: _tc, perUnitCost: _pu, status: _st, unitNo: _un, ...jsonbFields } =
+    serverFields;
+  void _ts; void _tc; void _pu; void _st; void _un;
+
+  return { status, unitNo, perUnitCost, totalCost, totalSqft, jsonbFields };
+}
+
+// ---------------------------------------------------------------------------
 // Empty-placeholder detection (D3-02 / Pitfall 5)
 // ---------------------------------------------------------------------------
 
@@ -248,24 +289,10 @@ export async function saveExecutionsBatch(
         // server's authoritative computation (Pitfall 9 / D3-05).
         const serverFields = applyServerCalc(activity, unit.fields);
 
-        // Extract the top-level numeric columns from the recomputed fields.
-        // These are promoted to real numeric(14,2) columns on the row.
-        const totalSqft =
-          serverFields["totalSqft"] != null ? String(serverFields["totalSqft"]) : null;
-        const totalCost =
-          serverFields["totalCost"] != null ? String(serverFields["totalCost"]) : null;
-        const perUnitCost =
-          serverFields["perUnitCost"] != null ? String(serverFields["perUnitCost"]) : null;
-        const status =
-          typeof serverFields["status"] === "string" ? serverFields["status"] : null;
-        const unitNo =
-          typeof serverFields["unitNo"] === "string" ? serverFields["unitNo"] : null;
-
-        // The jsonb fields blob persisted to `executions.fields` (measurements, lat/long, etc.)
-        // Excludes the promoted numeric columns so they aren't duplicated in both places.
-        const { totalSqft: _ts, totalCost: _tc, perUnitCost: _pu, status: _st, unitNo: _un, ...jsonbFields } =
-          serverFields;
-        void _ts; void _tc; void _pu; void _st; void _un;
+        // Extract the promoted numeric/status columns + the jsonb tail. Shared helper so
+        // the off-plan-exception path (addOffPlanExecution) uses the IDENTICAL split.
+        const { status, unitNo, perUnitCost, totalCost, totalSqft, jsonbFields } =
+          promoteExecutionColumns(serverFields);
 
         if (unit.popLines != null) {
           // (5a) POP kit: one execution + N execution_items atomically (D3-13/14).
@@ -336,4 +363,180 @@ export async function saveExecutionsBatch(
 
   // (7) Return the save result with collected conflicts for the grid's conflict UI.
   return { ok: true, savedIds, conflicts };
+}
+
+// ---------------------------------------------------------------------------
+// addOffPlanExecution — COMP-04 off-plan-exception Server Action (Phase 3.1)
+// ---------------------------------------------------------------------------
+
+/**
+ * SQLSTATE 23505 = unique_violation. plan_rows has UNIQUE(period_id, activity, sfid)
+ * (`plan_rows_match_key`), so filing an exception for an SFID already in the plan for that
+ * (period, activity) raises 23505 and the transaction rolls back.
+ *
+ * SIBLING of isFkRestrictError in lib/actions/plans.ts — that helper EXPLICITLY does NOT
+ * cover 23505 (its comment routes the unique-violation to "a different handling path").
+ * This is that path: catch it, return a clean {ok:false} message, NEVER a 500 (R3).
+ *
+ * Duck-typed on `err.cause?.code ?? err.code` for cross-driver compat (PGlite obfuscates
+ * its DatabaseError class so `instanceof` is unreliable; postgres-js exposes the SQLSTATE
+ * at err.cause.code). Same shape as isFkRestrictError.
+ */
+function isUniqueViolation(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const cause = (err as { cause?: unknown }).cause;
+  const code =
+    (cause as { code?: string } | undefined)?.code ??
+    (err as { code?: string }).code;
+  return code === "23505";
+}
+
+/**
+ * Input schema for addOffPlanExecution.
+ *
+ * `sfid` IS accepted here (unlike saveExecutionsBatch, which forbids it) BECAUSE the whole
+ * point of the off-plan-exception path is to introduce a NEW plan_row — but the sfid is
+ * written ONLY to plan_rows.sfid, NEVER to executions (which has no sfid column). The
+ * structural off-plan guard (COMP-01) is preserved: the execution still FKs to a real
+ * plan_row id.
+ *
+ * `exceptionReason` is REQUIRED (min 1) — an off-plan exception must be audited (D3.1-08).
+ */
+const addOffPlanSchema = z.object({
+  periodId: z.number().int().positive("periodId must be a positive integer"),
+  activity: z.string().min(1, "activity is required"),
+  sfid: z.string().min(1, "sfid is required"),
+  dealer: z.string().min(1, "dealer is required"),
+  region: z.string().optional(),
+  state: z.string().optional(),
+  district: z.string().optional(),
+  taluka: z.string().optional(),
+  distributor: z.string().optional(),
+  exceptionReason: z.string().min(1, "A reason is required for an off-plan exception"),
+  // The actuals blob from the off-plan modal (status, measurements, lat/long, etc.).
+  fields: z.record(z.string(), z.unknown()),
+});
+
+/**
+ * The return contract for addOffPlanExecution. Plan 05's off-plan modal consumes this
+ * (useActionState). On success it carries the new plan_row + execution ids; on a handled
+ * failure (dupe SFID / Zod) it carries a user-facing message.
+ */
+export type AddOffPlanState =
+  | { ok: true; planRowId: number; executionId: number }
+  | { ok: false; error: string };
+
+/**
+ * addOffPlanExecution — record a deliberate, audited off-plan-exception execution.
+ *
+ * Mirrors commitPlanUpload / saveExecutionsBatch structure exactly:
+ *   1. requireSession() FIRST — the auth boundary (CVE-2025-29927; ASVS V2). Throws
+ *      Unauthorized before ANY DB touch.
+ *   2. Zod safeParse — never trust the client. `exceptionReason` is required (min 1).
+ *   3. ONE db.transaction:
+ *        a. insertExceptionPlanRow(tx, ...) — the NEW plan_row (source='exception'),
+ *           returns its id. This is the FIRST insert; if the SFID already exists it
+ *           raises 23505 here and the whole tx rolls back.
+ *        b. applyServerCalc(activity, fields) — server trust-recompute of non-overridden
+ *           derived totals (R12 / D3-05 / Pitfall 9). Client totals are NOT trusted.
+ *        c. insertExecution(tx, { planRowId, ... }) — the execution FK'd to the new
+ *           plan_row. The SECOND insert; if it fails, (a) rolls back too (atomicity).
+ *   4. revalidatePath("/actuals").
+ *   5. Return { ok:true, planRowId, executionId }.
+ *
+ * The try/catch is AROUND db.transaction(...), NEVER inside the callback — the throw is
+ * HOW Drizzle rolls back. A 23505 unique-violation is caught and returned as a clean
+ * {ok:false} message (R3 — never a 500); any other error propagates.
+ *
+ * Off-plan guard (COMP-01) intact: executions has no sfid column; the only write of the
+ * sfid is to the new plan_rows row, and the execution attaches via the NOT NULL FK.
+ */
+export async function addOffPlanExecution(
+  input: unknown,
+): Promise<AddOffPlanState> {
+  // (1) Auth re-check — BEFORE any DB touch (ASVS V2; CVE-2025-29927).
+  await requireSession();
+
+  // (2) Zod re-validate. Reason is required; sfid/dealer required.
+  const parsed = addOffPlanSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid input",
+    };
+  }
+
+  const {
+    periodId,
+    activity,
+    sfid,
+    dealer,
+    region,
+    state,
+    district,
+    taluka,
+    distributor,
+    exceptionReason,
+    fields,
+  } = parsed.data;
+
+  try {
+    const { planRowId, executionId } = await db.transaction(async (tx) => {
+      // (3a) Insert the exception plan_row FIRST. sfid lives ONLY here (plan_rows), never
+      // on executions — the off-plan guard stays structural (COMP-01). A dupe SFID raises
+      // 23505 on THIS insert and the whole tx rolls back.
+      const newPlanRowId = await insertExceptionPlanRow(tx, {
+        periodId,
+        activity,
+        sfid,
+        region: region ?? null,
+        state: state ?? null,
+        district: district ?? null,
+        taluka: taluka ?? null,
+        distributor: distributor ?? null,
+        dealer,
+        fields: {},
+        exceptionReason,
+      });
+
+      // (3b) Server trust-recompute (R12 / D3-05): re-derive non-overridden totals so a
+      // lying client cannot persist wrong totals on the exception path. IDENTICAL to
+      // saveExecutionsBatch.
+      const serverFields = applyServerCalc(activity, fields);
+      const { status, unitNo, perUnitCost, totalCost, totalSqft, jsonbFields } =
+        promoteExecutionColumns(serverFields);
+
+      // (3c) Insert the execution FK'd to the new plan_row (version 0). The SECOND insert.
+      const newExecutionId = await insertExecution(tx, {
+        planRowId: newPlanRowId,
+        fields: jsonbFields,
+        version: 0,
+        status,
+        unitNo,
+        perUnitCost,
+        totalCost,
+        totalSqft,
+      });
+
+      return { planRowId: newPlanRowId, executionId: newExecutionId };
+    });
+
+    // (4) Invalidate the actuals page cache so the new exception row appears on reload.
+    revalidatePath("/actuals");
+
+    // (5) Success.
+    return { ok: true, planRowId, executionId };
+  } catch (err) {
+    // R3: a dupe SFID (23505) is a USER error, not a 500 — return a clean message. The
+    // transaction has already rolled back (neither the plan_row nor the execution persists).
+    if (isUniqueViolation(err)) {
+      return {
+        ok: false,
+        error:
+          'This SFID already exists in the plan for this activity and period — use "+ add unit" on that row instead.',
+      };
+    }
+    // Anything else (DB blip, schema drift) — propagate so the error boundary handles it.
+    throw err;
+  }
 }
