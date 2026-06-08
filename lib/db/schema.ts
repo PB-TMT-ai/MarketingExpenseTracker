@@ -14,6 +14,7 @@ import {
   unique,
   uniqueIndex,
   index,
+  check,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -76,6 +77,14 @@ export const planRows = pgTable(
     dealer: text("dealer"),
     plannedCost: numeric("planned_cost", { precision: 14, scale: 2 }), // budget (D-05)
     fields: jsonb("fields").notNull().default({}), // plan-side activity extras
+    // COMP-04 (Phase 3.1): off-plan-exception provenance + audit. `source` distinguishes a
+    // normally plan-uploaded row from one created via the actuals off-plan-exception affordance.
+    // The app (Server Action) is the only writer of 'exception'; plan upload never sets it.
+    // No `createdBy` — v1 uses a single shared password, so there is no per-user identity (D3.1-08).
+    source: text("source").notNull().default("plan-upload"),
+    exceptionReason: text("exception_reason"), // free-text reason on exception rows (NULL for plan-upload)
+    createdVia: text("created_via"), // e.g. 'plan-upload' | 'actuals-exception' | 'manual'
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (t) => [
     unique("plan_rows_match_key").on(t.periodId, t.activity, t.sfid), // D-02 match key
@@ -86,6 +95,10 @@ export const planRows = pgTable(
       t.state,
       t.district,
     ),
+    // text + CHECK (NOT pgEnum) — mirrors the `status` precedent (registry enum is the editor
+    // source of truth) and keeps adding a future `source` value a one-line CHECK edit, not a
+    // Postgres enum migration. COMP-04.
+    check("plan_rows_source_check", sql`${t.source} in ('plan-upload', 'exception')`),
   ],
 );
 
