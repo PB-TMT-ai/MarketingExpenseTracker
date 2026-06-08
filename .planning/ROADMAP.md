@@ -54,7 +54,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. On commit, plan rows — including shared who/where fields and the planned-cost/budget column — are saved in one transaction and become the allowed-SFID master list for that activity + period.
   4. Re-uploading a plan for a period that already has actuals preserves existing executions (non-destructive merge/reconcile) and warns the user.
   5. Rows rejected as off-plan during an actuals import are listed so the user can see what was rejected and why.
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 04-01-PLAN.md — Status registry (STATUS_VALUES/TERMINAL_STATUSES + Cancelled rollout) + shared computeCompleteness helper (COMP-03, DASH-05)
+- [ ] 04-02-PLAN.md — lib/db/dashboard.ts aggregate helpers + PGlite integration tests (COMP-03, DASH-01..07)
+- [ ] 04-03-PLAN.md — Recharts install + /dashboard RSC + StatStrip/ByActivity/ByRegion/Exception cards + FilterBar + redirect from / (DASH-01..05, DASH-07)
+- [ ] 04-04-PLAN.md — Recharts weekly trend + spend charts + rolling-N toggle + Zone-Taluka drill tree + Playwright e2e (DASH-06, DASH-07)
 **UI hint**: yes
 
 > **Discuss-step questions to resolve here** (do not resolve now): exact re-upload semantics (append vs upsert vs replace; policy for a plan row removed on re-upload that already has actuals — block / soft-archive / flag, never silent delete). Plan against a corpus of real vendor Excel files; handle DD/MM dates, IDs-as-text, rupee/comma stripping, header aliasing, and zero/multi-match cases.
