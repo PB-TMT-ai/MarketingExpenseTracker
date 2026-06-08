@@ -1,6 +1,13 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "./index";
-import { executions, executionItems, planRows } from "./schema";
+import {
+  executions,
+  executionItems,
+  planRows,
+  type OverrideLogEntry,
+} from "./schema";
+
+export type { OverrideLogEntry };
 
 /**
  * Typed query / write helpers for `executions` and `execution_items`.
@@ -41,6 +48,10 @@ export type ExecutionRecord = {
   totalCost: string | null;
   totalSqft: string | null;
   fields: Record<string, unknown>;
+  /** P1-1: reviewer's free-text justification for overrides; nullable. */
+  notes: string | null;
+  /** P1-1: append-only audit of derived-field overrides; nullable when none. */
+  overridesLog: OverrideLogEntry[] | null;
   version: number;
 };
 
@@ -55,6 +66,9 @@ export type ExecPatch = {
   totalCost?: string | null;
   totalSqft?: string | null;
   fields?: Record<string, unknown>;
+  notes?: string | null;
+  /** Append-only at the action layer — pass the FULL desired log array. */
+  overridesLog?: OverrideLogEntry[] | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -122,6 +136,8 @@ export type ExecInsertValues = {
   perUnitCost?: number | string | null;
   totalCost?: number | string | null;
   totalSqft?: number | string | null;
+  notes?: string | null;
+  overridesLog?: OverrideLogEntry[] | null;
 };
 
 /**
@@ -150,6 +166,8 @@ export async function insertExecution(
       perUnitCost: toNumStr(values.perUnitCost),
       totalCost: toNumStr(values.totalCost),
       totalSqft: toNumStr(values.totalSqft),
+      notes: values.notes ?? null,
+      overridesLog: values.overridesLog ?? null,
     })
     .returning();
 
@@ -201,6 +219,8 @@ export async function updateExecutionVersioned(
   if (patch.totalCost !== undefined) setValues.totalCost = toNumStr(patch.totalCost);
   if (patch.totalSqft !== undefined) setValues.totalSqft = toNumStr(patch.totalSqft);
   if (patch.fields !== undefined) setValues.fields = patch.fields;
+  if (patch.notes !== undefined) setValues.notes = patch.notes;
+  if (patch.overridesLog !== undefined) setValues.overridesLog = patch.overridesLog;
 
   const res = await tx
     .update(executions)
@@ -233,6 +253,8 @@ export async function listExecutionsByPeriodActivity(
       totalCost: executions.totalCost,
       totalSqft: executions.totalSqft,
       fields: executions.fields,
+      notes: executions.notes,
+      overridesLog: executions.overridesLog,
       version: executions.version,
     })
     .from(executions)
@@ -254,8 +276,56 @@ export async function listExecutionsByPeriodActivity(
     totalCost: r.totalCost,
     totalSqft: r.totalSqft,
     fields: r.fields as Record<string, unknown>,
+    notes: r.notes,
+    overridesLog: r.overridesLog,
     version: Number(r.version),
   }));
+}
+
+// ---------------------------------------------------------------------------
+// getExecutionById — fetch a single execution row by id.
+// Used by the actuals grid's single-row conflict re-fetch (P1-2): when a save
+// returns a version conflict, we re-fetch ONLY the stale row's current state
+// so the user keeps their other unsaved edits intact (no full-page reload).
+// Returns null if the execution was deleted server-side.
+// ---------------------------------------------------------------------------
+
+export async function getExecutionById(
+  id: number,
+): Promise<ExecutionRecord | null> {
+  const rows = await db
+    .select({
+      id: executions.id,
+      planRowId: executions.planRowId,
+      status: executions.status,
+      unitNo: executions.unitNo,
+      perUnitCost: executions.perUnitCost,
+      totalCost: executions.totalCost,
+      totalSqft: executions.totalSqft,
+      fields: executions.fields,
+      notes: executions.notes,
+      overridesLog: executions.overridesLog,
+      version: executions.version,
+    })
+    .from(executions)
+    .where(eq(executions.id, id))
+    .limit(1);
+
+  const r = rows[0];
+  if (!r) return null;
+  return {
+    id: Number(r.id),
+    planRowId: Number(r.planRowId),
+    status: r.status,
+    unitNo: r.unitNo,
+    perUnitCost: r.perUnitCost,
+    totalCost: r.totalCost,
+    totalSqft: r.totalSqft,
+    fields: r.fields as Record<string, unknown>,
+    notes: r.notes,
+    overridesLog: r.overridesLog,
+    version: Number(r.version),
+  };
 }
 
 // ---------------------------------------------------------------------------

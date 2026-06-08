@@ -6,11 +6,16 @@ import { z } from "zod";
 import { SESSION_COOKIE, verifySession } from "../auth/session";
 import { db } from "../db";
 import { computeDerived, isOverridden } from "../actuals/calc";
+import { inArray } from "drizzle-orm";
+import { executions as executionsTable } from "../db/schema";
 import {
   insertExecution,
   updateExecutionVersioned,
   savePopKit,
+  getExecutionById,
+  listKitLines,
   type PopLine,
+  type OverrideLogEntry,
 } from "../db/executions";
 
 /**
@@ -160,6 +165,78 @@ function applyServerCalc(
 }
 
 // ---------------------------------------------------------------------------
+// Override audit log capture (P1-1)
+//
+// For each derived field where the user set __overrides[K] = true, emit a log
+// entry capturing the natural formula value (what the formula would compute
+// WITHOUT this specific override) vs the value being saved. This gives the
+// reviewer an auditable receipt: "the formula said X; I saved Y." Soft cap
+// at 50 entries so a misbehaving client cannot bloat the row.
+// ---------------------------------------------------------------------------
+
+const OVERRIDE_LOG_CAP = 50;
+
+function computeOverrideEntries(
+  activityKey: string,
+  fields: Record<string, unknown>,
+): OverrideLogEntry[] {
+  const entries: OverrideLogEntry[] = [];
+  const at = new Date().toISOString();
+  for (const key of DERIVED_KEYS) {
+    if (!isOverridden(fields, key)) continue;
+    const userVal = fields[key];
+    if (userVal == null || userVal === "") continue;
+
+    // Clone fields and strip THIS specific override so computeDerived returns
+    // the formula's natural answer. Other overrides (e.g. on totalSqft when
+    // we're computing totalCost) intentionally remain — that mirrors what
+    // would actually be persisted if the user un-checked just this override.
+    const fieldsNoOverride: Record<string, unknown> = { ...fields };
+    const overrides = {
+      ...((fields["__overrides"] as Record<string, unknown> | undefined) ?? {}),
+    };
+    delete overrides[key];
+    fieldsNoOverride["__overrides"] = overrides;
+
+    const naturalVal = computeDerived(activityKey, key, fieldsNoOverride);
+    if (naturalVal == null) continue;
+
+    // Cast to numbers for comparison — userVal may be string from grid input,
+    // naturalVal is number from computeDerived.
+    const userNum = Number(userVal);
+    if (!Number.isFinite(userNum)) continue;
+    if (Math.abs(userNum - naturalVal) < 0.005) continue; // matches 2-dp rounding
+
+    entries.push({
+      field: key,
+      fromValue: naturalVal,
+      toValue: userNum,
+      at,
+    });
+  }
+  return entries;
+}
+
+/**
+ * Merge prior log + new entries, soft-capping at OVERRIDE_LOG_CAP by trimming
+ * the oldest entries from the front. Returns null when there are no entries
+ * at all (keeps the column clean for un-overridden rows).
+ */
+function mergeOverrideLog(
+  prior: OverrideLogEntry[] | null | undefined,
+  added: OverrideLogEntry[],
+): OverrideLogEntry[] | null {
+  if (added.length === 0 && (prior == null || prior.length === 0)) {
+    return null;
+  }
+  const merged = [...(prior ?? []), ...added];
+  if (merged.length > OVERRIDE_LOG_CAP) {
+    return merged.slice(merged.length - OVERRIDE_LOG_CAP);
+  }
+  return merged;
+}
+
+// ---------------------------------------------------------------------------
 // Empty-placeholder detection (D3-02 / Pitfall 5)
 // ---------------------------------------------------------------------------
 
@@ -237,6 +314,26 @@ export async function saveExecutionsBatch(
   const savedIds: SavedUnit[] = [];
   const conflicts: number[] = [];
 
+  // P1-1: one batch SELECT to pull prior override logs for all existing units
+  // in this batch. Avoids N+1 reads inside the transaction. New placeholders
+  // (executionId === null) start with an empty prior log.
+  const existingIds = units
+    .map((u) => u.executionId)
+    .filter((id): id is number => id != null);
+  const priorLogById = new Map<number, OverrideLogEntry[] | null>();
+  if (existingIds.length > 0) {
+    const priorRows = await db
+      .select({
+        id: executionsTable.id,
+        overridesLog: executionsTable.overridesLog,
+      })
+      .from(executionsTable)
+      .where(inArray(executionsTable.id, existingIds));
+    for (const r of priorRows) {
+      priorLogById.set(Number(r.id), r.overridesLog ?? null);
+    }
+  }
+
   try {
     await db.transaction(async (tx) => {
       for (const unit of units) {
@@ -260,15 +357,46 @@ export async function saveExecutionsBatch(
           typeof serverFields["status"] === "string" ? serverFields["status"] : null;
         const unitNo =
           typeof serverFields["unitNo"] === "string" ? serverFields["unitNo"] : null;
+        // P1-1: pull notes out of the fields blob. Trim and treat empty as null
+        // so a blank textarea doesn't persist whitespace.
+        const notesRaw =
+          typeof serverFields["notes"] === "string" ? serverFields["notes"].trim() : null;
+        const notes = notesRaw && notesRaw.length > 0 ? notesRaw : null;
+
+        // P1-1: capture override entries for this save and merge with prior log.
+        // Read-only on the client; the action is the only writer.
+        const newOverrideEntries = computeOverrideEntries(activity, serverFields);
+        const priorLog = unit.executionId != null ? priorLogById.get(unit.executionId) : null;
+        const mergedLog = mergeOverrideLog(priorLog, newOverrideEntries);
 
         // The jsonb fields blob persisted to `executions.fields` (measurements, lat/long, etc.)
-        // Excludes the promoted numeric columns so they aren't duplicated in both places.
-        const { totalSqft: _ts, totalCost: _tc, perUnitCost: _pu, status: _st, unitNo: _un, ...jsonbFields } =
-          serverFields;
-        void _ts; void _tc; void _pu; void _st; void _un;
+        // Excludes the promoted numeric columns and notes so they aren't duplicated.
+        // Also strips the read-only __overridesLog client mirror — the column is authoritative.
+        const {
+          totalSqft: _ts,
+          totalCost: _tc,
+          perUnitCost: _pu,
+          status: _st,
+          unitNo: _un,
+          notes: _no,
+          __overridesLog: _ol,
+          ...jsonbFields
+        } = serverFields;
+        void _ts; void _tc; void _pu; void _st; void _un; void _no; void _ol;
 
         if (unit.popLines != null) {
           // (5a) POP kit: one execution + N execution_items atomically (D3-13/14).
+          //
+          // P1-5 guard: a brand-new kit (executionId === null) with zero valid
+          // lines is meaningless — it would persist as a ₹0 "Done" kit with no
+          // items, which pollutes the % executed metric. Skip the insert.
+          //
+          // Existing kits CAN be saved with zero lines: that's the user
+          // explicitly emptying a kit they had previously filled (replace-all
+          // semantics in savePopKit handle the delete). We keep that path.
+          if (unit.executionId == null && unit.popLines.length === 0) {
+            continue;
+          }
           const lines: PopLine[] = unit.popLines.map((l) => ({
             itemName: l.itemName,
             qty: l.qty,
@@ -288,6 +416,8 @@ export async function saveExecutionsBatch(
             perUnitCost,
             totalCost,
             totalSqft,
+            notes,
+            overridesLog: mergedLog,
           });
           savedIds.push({ rowKey: unit.rowKey, id: newId, version: 0 });
         } else {
@@ -305,6 +435,8 @@ export async function saveExecutionsBatch(
               perUnitCost,
               totalCost,
               totalSqft,
+              notes,
+              overridesLog: mergedLog,
             },
           );
           if (ok) {
@@ -336,4 +468,93 @@ export async function saveExecutionsBatch(
 
   // (7) Return the save result with collected conflicts for the grid's conflict UI.
   return { ok: true, savedIds, conflicts };
+}
+
+// ---------------------------------------------------------------------------
+// fetchExecutionForRow — single-row conflict re-fetch (P1-2)
+//
+// When saveExecutionsBatch returns a conflict for an executionId, the grid needs
+// the row's FRESH server state so the user can re-apply their edits on top of
+// the latest values. Previously the grid called window.location.reload() — which
+// nuked every other unsaved edit in the batch. This action returns just the one
+// row, so the rest of the dirty state stays intact.
+//
+// Returns merged fields (jsonb + promoted numeric columns) in the same shape
+// buildRowModel produces, so the client can do a direct row-patch.
+// ---------------------------------------------------------------------------
+
+const fetchExecutionInputSchema = z.object({
+  executionId: z.number().int().positive(),
+  withKitLines: z.boolean().optional(),
+});
+
+export type FetchExecutionState =
+  | {
+      ok: true;
+      executionId: number;
+      planRowId: number;
+      version: number;
+      fields: Record<string, unknown>;
+      popLines?: Array<{
+        itemName: string;
+        qty: number;
+        rate: number;
+        lineTotal: number;
+      }>;
+    }
+  | { ok: false; error: string };
+
+export async function fetchExecutionForRow(
+  input: unknown,
+): Promise<FetchExecutionState> {
+  // Auth boundary first — same posture as saveExecutionsBatch (CVE-2025-29927).
+  await requireSession();
+
+  const parsed = fetchExecutionInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid input",
+    };
+  }
+
+  const { executionId, withKitLines } = parsed.data;
+
+  const exec = await getExecutionById(executionId);
+  if (!exec) {
+    // Row was deleted server-side between the conflict and the reload.
+    return { ok: false, error: "Execution not found" };
+  }
+
+  // Merge jsonb fields + promoted numeric columns, mirroring buildRowModel.
+  const mergedFields: Record<string, unknown> = { ...exec.fields };
+  if (exec.totalSqft != null) mergedFields["totalSqft"] = exec.totalSqft;
+  if (exec.totalCost != null) mergedFields["totalCost"] = exec.totalCost;
+  if (exec.perUnitCost != null) mergedFields["perUnitCost"] = exec.perUnitCost;
+  if (exec.status != null) mergedFields["status"] = exec.status;
+  if (exec.unitNo != null) mergedFields["unitNo"] = exec.unitNo;
+  if (exec.notes != null) mergedFields["notes"] = exec.notes;
+  if (exec.overridesLog != null) {
+    mergedFields["__overridesLog"] = exec.overridesLog;
+  }
+
+  const result: FetchExecutionState = {
+    ok: true,
+    executionId: exec.id,
+    planRowId: exec.planRowId,
+    version: exec.version,
+    fields: mergedFields,
+  };
+
+  if (withKitLines) {
+    const lines = await listKitLines([executionId]);
+    result.popLines = lines.map((l) => ({
+      itemName: l.itemName,
+      qty: Number(l.qty),
+      rate: Number(l.rate),
+      lineTotal: Number(l.lineTotal),
+    }));
+  }
+
+  return result;
 }
