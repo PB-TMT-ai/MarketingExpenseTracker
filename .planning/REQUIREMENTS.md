@@ -43,7 +43,7 @@ Requirements for the initial release. Each maps to a roadmap phase.
 - [x] **GRID-06**: User can record POP / dealer-kit executions as multiple line items via a popup (item, qty, rate → total), rolled up to the dealer row
 - [x] **GRID-07**: Edits are saved reliably (batched, with a clear saved/dirty indicator) and the grid stays responsive at large row counts
 - [x] **GRID-08**: Dealer Certificate entry captures issuance status, date, and cost
-- [ ] **GRID-09**: Cell-input responsiveness in the actuals grid is no longer perceptibly laggy — edits land in-place without a full re-render on each keystroke, derived state (rowData, dirtyRows, external-filter triggers) is memoised, and a baseline profile proves the improvement (Phase 3.1)
+- [x] **GRID-09**: Cell-input responsiveness in the actuals grid is no longer perceptibly laggy — edits land in-place without a full re-render on each keystroke, derived state (rowData, dirtyRows, external-filter triggers) is memoised, and a baseline profile proves the improvement (Phase 3.1)
 - [x] **GRID-10**: Status defaults to "In Progress" for new placeholder rows and "+ add unit" clones; a one-time backfill sets `status = 'In Progress'` for executions where status IS NULL (Phase 3.1)
 - [x] **GRID-11**: Done-row edits are unlocked — the P3 lock-on-Done is removed and every cell on a Done execution is editable like any other row (Phase 3.1)
 - [ ] **GRID-12**: The Save control is reachable from the top of the grid as well as the bottom — a sticky save bar at the top mirrors the existing bottom save bar (same dirty count, same action) so save is always in reach on long grids (Phase 3.1)
@@ -126,7 +126,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | GRID-06 | Phase 3 — Actuals Grid | Complete |
 | GRID-07 | Phase 3 — Actuals Grid | Complete |
 | GRID-08 | Phase 3 — Actuals Grid | Complete |
-| GRID-09 | Phase 3.1 — Actuals Grid Refinements | Pending |
+| GRID-09 | Phase 3.1 — Actuals Grid Refinements | Complete |
 | GRID-10 | Phase 3.1 — Actuals Grid Refinements | Complete |
 | GRID-11 | Phase 3.1 — Actuals Grid Refinements | Complete |
 | GRID-12 | Phase 3.1 — Actuals Grid Refinements | Pending |
