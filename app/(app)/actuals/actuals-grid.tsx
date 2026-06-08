@@ -37,6 +37,10 @@ import { buildColumnDefs } from "@/lib/actuals/colDefs";
 import { cloneUnitForAdd, type UnitRow, type PopLineInput } from "@/lib/actuals/rows";
 import { setOverride, clearOverride } from "@/lib/actuals/calc";
 import { matchesFacets, matchesSfid, type FacetSelections } from "@/lib/actuals/filter";
+import {
+  useSaveExecutions,
+  type UnitPatch,
+} from "@/lib/actuals/use-save-executions";
 import { getActivity } from "@/lib/activities/registry";
 import { type SaveBatchState } from "@/lib/actions/executions";
 import FilterBar from "./filter-bar";
@@ -444,6 +448,61 @@ export default function ActualsGrid({
   }, []);
 
   // ---------------------------------------------------------------------------
+  // Save flow (GRID-12) — SINGLE source of truth.
+  //
+  // useSaveExecutions owns the ONE useActionState / submit / onResult. Both SaveBar
+  // instances (top + bottom) and the Ctrl/Cmd+S shortcut call the SAME `submit`, share
+  // the SAME `pending`, and read the SAME dirtyCount — so there is never a double-submit
+  // or a divergent count.
+  //
+  // dirtyRowsRef keeps the latest dirtyRows available to the submit closure WITHOUT making
+  // the hook's action depend on it (the units are captured at click time, decision 03-04).
+  // ---------------------------------------------------------------------------
+  const dirtyRowsRef = useRef<UnitRow[]>(dirtyRows);
+  dirtyRowsRef.current = dirtyRows;
+
+  const getDirtyUnits = useCallback((): UnitPatch[] => {
+    // Build the batch from the CURRENT dirty rows (same shape the old SaveBar built).
+    return dirtyRowsRef.current.map((row) => ({
+      rowKey: row.rowKey,
+      planRowId: row.planRowId,
+      executionId: row.executionId,
+      version: row.version,
+      fields: row.fields,
+      isPlaceholder: row.isPlaceholder,
+      // POP/Dealer-Kit lines (undefined for non-POP rows → normal insert/update path;
+      // an array → the action routes through savePopKit: one execution + N execution_items).
+      popLines: row.popLines,
+    }));
+  }, []);
+
+  const { submit, pending, state: saveState } = useSaveExecutions(
+    getDirtyUnits,
+    activityKey,
+    periodId,
+    handleSaveResult,
+  );
+
+  const dirtyCount = dirtyKeys.size;
+
+  // ---------------------------------------------------------------------------
+  // Ctrl/Cmd+S — ONE window keydown listener calling the SAME submit (GRID-12).
+  // Works regardless of which bar is visible. Guards on dirty && !pending so it never
+  // double-submits and never fires an empty save. preventDefault suppresses the browser's
+  // own Save dialog.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (dirtyCount > 0 && !pending) submit();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dirtyCount, pending, submit]);
+
+  // ---------------------------------------------------------------------------
   // onGridReady
   // ---------------------------------------------------------------------------
   const onGridReady = useCallback((e: GridReadyEvent<UnitRow>) => {
@@ -499,6 +558,19 @@ export default function ActualsGrid({
         allRows={initialRowData}
         onFacetChange={(sel) => setFacetSelections(sel)}
         onSfidChange={(s) => setSfidSearch(s)}
+      />
+
+      {/* Top save bar (GRID-12) — sticky top-0, ABOVE the grid container and BELOW
+          FilterBar. z-30 clears AG Grid's pinned-header stacking context (R6). Shares the
+          SAME submit/pending/dirtyCount/lastResult as the bottom bar (single source of
+          truth). Rendered as a sibling of the grid container inside this flex column. */}
+      <SaveBar
+        slot="save-bar-top"
+        dirtyCount={dirtyCount}
+        pending={pending}
+        lastResult={saveState}
+        onSave={submit}
+        className="sticky top-0 z-30"
       />
 
       {/* Grid container — explicit height required by AG Grid (A4).
@@ -559,13 +631,15 @@ export default function ActualsGrid({
           );
         })()}
 
-      {/* Save bar — persists dirty rows, handles conflict results */}
+      {/* Bottom save bar (GRID-12) — sticky bottom-0. Shares the SAME save flow as the
+          top bar via the useSaveExecutions hook (one submit / one pending / one count). */}
       <SaveBar
-        dirtyRows={dirtyRows}
-        activityKey={activityKey}
-        periodId={periodId}
-        onSaveResult={handleSaveResult}
-        items={items}
+        slot="save-bar-bottom"
+        dirtyCount={dirtyCount}
+        pending={pending}
+        lastResult={saveState}
+        onSave={submit}
+        className="sticky bottom-0"
       />
     </div>
   );
