@@ -658,7 +658,12 @@ export default function ActualsGrid({
 
     el.addEventListener("paste", onPaste);
     return () => el.removeEventListener("paste", onPaste);
-  }, [kindByKey]);
+    // `mounted` is REQUIRED in deps: the A3 mounted-guard renders a placeholder on the first
+    // render, so gridWrapRef.current is null then and the effect bails at `if (!el) return`.
+    // Without `mounted`, the effect never re-runs after the real grid div mounts (kindByKey is
+    // stable), leaving the paste listener permanently unattached (GRID-13 dead). Re-running on
+    // mount attaches it once gridWrapRef.current exists.
+  }, [kindByKey, mounted]);
 
   // ---------------------------------------------------------------------------
   // onGridReady
