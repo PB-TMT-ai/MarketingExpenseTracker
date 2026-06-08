@@ -742,7 +742,11 @@ export default function ActualsGrid({
           singleClickEdit: status opens on one click. animateRows=false: no layout
           cost on bulk updates for a data-entry grid. Virtualization stays ON.
           gridWrapRef: the GRID-13 paste listener attaches here (scoped to grid focus). */}
-      <div ref={gridWrapRef} style={{ height: 600, width: "100%" }}>
+      <div
+        ref={gridWrapRef}
+        data-slot="grid-wrap"
+        style={{ height: 600, width: "100%" }}
+      >
         <AgGridReact<UnitRow>
           rowData={initialRowData}
           columnDefs={columnDefs}
