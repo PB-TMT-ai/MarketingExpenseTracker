@@ -102,7 +102,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] 03_1-01-PLAN.md — Migration 0002 (plan_rows source/audit cols + status backfill) + default "In Progress" (rows.ts) + Done-lock regression (GRID-10, GRID-11)
 - [x] 03_1-02-PLAN.md — GRID-09 hot-path perf refactor (applyTransaction + dirtyKeys Set + useDeferredValue + singleClickEdit) + before/after baseline (GRID-09)
 - [x] 03_1-03-PLAN.md — COMP-04 backend: addOffPlanExecution action + insertExceptionPlanRow + 23505 catch + re-upload preservation guard (COMP-04)
-- [ ] 03_1-04-PLAN.md — GRID-12 top+bottom save bar (single source of truth + Ctrl/Cmd+S) + GRID-13 paste-block handler (GRID-12, GRID-13)
+- [x] 03_1-04-PLAN.md — GRID-12 top+bottom save bar (single source of truth + Ctrl/Cmd+S) + GRID-13 paste-block handler (GRID-12, GRID-13)
 - [ ] 03_1-05-PLAN.md — COMP-04 frontend: off-plan modal + "+ off-plan execution" button + exception pill + e2e (COMP-04)
 **UI hint**: yes
 
@@ -146,6 +146,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 3.1 → 4 → 5
 | 1. Foundation | 5/5 | Complete   | 2026-06-05 |
 | 2. Plan Upload & Periods | 3/3 | Complete   | 2026-06-05 |
 | 3. Actuals Grid | 5/5 | Complete   | 2026-06-06 |
-| 3.1. Actuals Grid Refinements | 3/5 | In progress | - |
+| 3.1. Actuals Grid Refinements | 4/5 | In progress | - |
 | 4. Compliance & Dashboard | 0/TBD | Not started | - |
 | 5. Excel Export | 0/TBD | Not started | - |

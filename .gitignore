@@ -27,3 +27,6 @@ next-env.d.ts
 /playwright/.cache/
 .gstack/
 .design-audit-*/
+
+# Transient agent worktrees (GSD executor isolation)
+.claude/worktrees/

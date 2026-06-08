@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in_progress
-stopped_at: "Phase 3.1 Plan 03 COMPLETE — COMP-04 off-plan-exception BACKEND: addOffPlanExecution (requireSession + Zod + ONE tx: exception plan_row -> applyServerCalc -> execution) + insertExceptionPlanRow + isUniqueViolation(23505) clean dupe message + R4 re-upload guard (merge-delete scoped to source='plan-upload', exception rows survive). tsc clean; executions.test.ts + plans.test.ts 31/31 green (--no-file-parallelism). Off-plan guard structurally intact (executions has no sfid). Next: 03_1-04 (GRID-12/13) then 03_1-05 (COMP-04 frontend)."
-last_updated: "2026-06-08T18:21:48Z"
-last_activity: 2026-06-08
+status: executing
+stopped_at: "Phase 3.1 Plan 03 COMPLETE — COMP-04 off-plan-exception BACKEND. addOffPlanExecution (requireSession + Zod reason-required + ONE db.transaction: insertExceptionPlanRow source='exception' -> applyServerCalc -> insertExecution FK'd to it) + isUniqueViolation(23505) clean dupe message (R3) + R4 re-upload guard (commitPlanUpload merge-delete scoped to source='plan-upload'; exception rows survive, regression test proves it). promoteExecutionColumns shared helper extracted. tsc --noEmit clean; executions.test.ts + plans.test.ts 31/31 green (--no-file-parallelism). Off-plan guard structurally intact (executions has no sfid column). Next: 03_1-04 (GRID-12/13) then 03_1-05 (COMP-04 frontend: modal + pill + e2e — consumes addOffPlanExecution/AddOffPlanState)."
+last_updated: "2026-06-08T19:13:06.023Z"
+last_activity: 2026-06-08 -- Phase 04 execution started
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 3
-  total_plans: 18
+  total_plans: 22
   completed_plans: 16
-  percent: 89
+  percent: 50
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-04)
 
 **Core value:** Spend stays inside the plan, and execution progress is always visible — only planned SFIDs can receive actuals, and "% of plan executed" is the headline metric.
-**Current focus:** Phase 2 — plan upload & periods
+**Current focus:** Phase 04 — compliance-dashboard
 
 ## Current Position
 
-Phase: 3.1 (in progress) — Actuals Grid Refinements
-Plan: 03_1-03 DONE
-Status: Phase 3.1 Wave 2 advancing — 03_1-03 (COMP-04 backend) COMPLETE. addOffPlanExecution Server Action inserts ONE exception plan_row (source='exception', created_via='actuals-exception') THEN the execution FK'd to it in one db.transaction, with applyServerCalc trust-recompute (R12), requireSession-first, and isUniqueViolation(23505) returning a clean dupe-SFID message (R3). The R4 cross-phase guard scopes commitPlanUpload's merge-delete to source='plan-upload' so exception rows survive a re-upload (regression test proves it). Off-plan guard structurally intact (executions has no sfid). 03_1-04 (GRID-12/13) + 03_1-05 (COMP-04 frontend modal/pill) remain.
-Last activity: 2026-06-08
+Phase: 04 (compliance-dashboard) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 04
+Last activity: 2026-06-08 -- Phase 04 execution started
 
 Phase 3 (Actuals Grid) — COMPLETE 5/5 (03-01..03-05).
 
