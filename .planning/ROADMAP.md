@@ -15,6 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation** - Activity registry, period-scoped schema with structural off-plan guard, item master, and shared-password gate (completed 2026-06-04)
 - [x] **Phase 2: Plan Upload & Periods** - Per-activity Excel plan ingestion that establishes the allowed-SFID master list per period (completed 2026-06-05)
 - [x] **Phase 3: Actuals Grid** - Editable spreadsheet-style grid for recording executions, filtering, and POP multi-item entry (completed 2026-06-06)
+- [ ] **Phase 3.1: Actuals Grid Refinements** - INSERTED — fix input lag, default In-Progress status, unlock Done-row edits, off-plan exception path with audit trail, paste-block bulk entry, top+bottom save bar
 - [ ] **Phase 4: Compliance & Dashboard** - Completeness math and the headline plan-executed / budget-vs-spend dashboard
 - [ ] **Phase 5: Excel Export** - Export the current filtered grid to a correctly-typed `.xlsx`
 
@@ -79,20 +80,47 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 > **Discuss-step note** (do not resolve now): begin with a short spike to confirm AG Grid Community editing / virtualization / server-side filtering feel against a real period of data (TanStack Table is the documented fallback). Saves are per-field patches with optimistic concurrency (version check) to prevent lost edits on the shared login.
 
+### Phase 3.1: Actuals Grid Refinements
+**Goal**: The actuals grid feels fast and intuitive — no input lag, sensible defaults, no surprise locks — and the ops reality of dealers being painted off-plan has a clear, audited path that does NOT weaken the structural off-plan guard.
+**Mode:** mvp
+**Inserted**: 2026-06-08 (between Phase 3 and Phase 4)
+**Depends on**: Phase 3
+**Requirements**: GRID-09, GRID-10, GRID-11, GRID-12, GRID-13, COMP-04
+**Success Criteria** (what must be TRUE):
+  1. Cell-input responsiveness in the actuals grid is no longer perceptibly laggy at realistic dataset sizes (single-tap edit, no full re-render on each keystroke, dirty-state derivation memoised) — measured against a baseline.
+  2. New placeholder rows AND new "+ add unit" clones default `status = "In Progress"`; a one-time backfill sets `status = 'In Progress'` for executions whose status is currently NULL, and the "No status" stat surfaces zero rows after the backfill.
+  3. The P3 lock-on-Done is removed — a row whose status is `Done` is fully editable like any other row (Status cell already was; this extends to every other cell).
+  4. There is a deliberate, audited path to record an execution at an SFID that is NOT in the uploaded plan ("off-plan exception"): the user provides minimum identifying fields (SFID, dealer, who/where) + reason, the system creates ONE plan_row tagged as an exception (source/flag column) in the same transaction as the execution, and the dashboard / "% executed" can later count plan-uploaded vs exception spend separately.
+  5. The structural off-plan guard for **plan uploads** is unchanged — the only legitimate way to introduce an off-plan SFID is through the explicit exception affordance; bulk Excel actuals upload (if/when added) still rejects unknown SFIDs.
+  6. The Save control is reachable from the top of the grid as well as the bottom — a sticky top save bar mirrors the existing bottom one (same dirty count, same save action).
+  7. A user can copy a block of cells from Excel/Sheets and paste it into the grid at a selected cell; the paste fills across the editable columns and down the rows, marks the affected rows dirty, and saves through the normal batch path. Read-only plan cells are never overwritten and the structural guards (server trust-recompute, version concurrency) still hold.
+**Plans**: 5 plans
+- [ ] 03_1-01-PLAN.md — Migration 0002 (plan_rows source/audit cols + status backfill) + default "In Progress" (rows.ts) + Done-lock regression (GRID-10, GRID-11)
+- [ ] 03_1-02-PLAN.md — GRID-09 hot-path perf refactor (applyTransaction + dirtyKeys Set + useDeferredValue + singleClickEdit) + before/after baseline (GRID-09)
+- [ ] 03_1-03-PLAN.md — COMP-04 backend: addOffPlanExecution action + insertExceptionPlanRow + 23505 catch + re-upload preservation guard (COMP-04)
+- [ ] 03_1-04-PLAN.md — GRID-12 top+bottom save bar (single source of truth + Ctrl/Cmd+S) + GRID-13 paste-block handler (GRID-12, GRID-13)
+- [ ] 03_1-05-PLAN.md — COMP-04 frontend: off-plan modal + "+ off-plan execution" button + exception pill + e2e (COMP-04)
+**UI hint**: yes
+
+> **Discuss-step questions to resolve before locking the plan** (do not resolve now): exact audit fields on the exception row (who/when/why-text only, vs photo/link); whether the exception affordance lives inside the grid (e.g. a "+ add off-plan dealer" button below the grid) or on a separate route (`/actuals/exception`); whether exceptions count toward "% plan executed" denominator in Phase 4 (recommended: NO — they live in a parallel "exception spend" bucket) — final answer is a Phase-4 decision; for Phase 3.1 we just persist the marker correctly. Performance baseline must be captured BEFORE the fix (snapshot a profile against a realistic period) so the success criterion is verifiable. Paste-block scope: AG Grid Community has NO range-select/clipboard — the paste handler is custom (parse clipboard TSV, map to the editable columns left-to-right from the anchor cell, skip read-only/derived columns); decide column-mapping rule for derived/override cells and how off-grid paste overflow (more pasted columns than editable columns remain) is handled.
+
 ### Phase 4: Compliance & Dashboard
-**Goal**: On login a user immediately sees, for the active period, how much of the plan has been executed and how spend compares to budget — broken down by activity and region, and honoring the current filters.
+**Goal**: On login a user immediately sees, for the active period, planned / executed / cancelled counter counts (with a week-wise trend) and planned vs actual expense — drillable from Zone → State → District → Taluka — honoring the current filters and sharing one authoritative "% executed" calc with the grid and export.
 **Mode:** mvp
 **Depends on**: Phase 3
-**Requirements**: COMP-03, DASH-01, DASH-02, DASH-03, DASH-04
+**Requirements**: COMP-03, DASH-01, DASH-02, DASH-03, DASH-04, DASH-05, DASH-06, DASH-07
 **Success Criteria** (what must be TRUE):
   1. On login, a user sees a dashboard with "% plan executed" and planned / executed / pending counts for the active period.
   2. The dashboard breaks down execution and spend by activity and by region.
   3. The dashboard shows planned budget vs actual spend.
   4. The dashboard respects the active period and the Region / State / Distributor filters, and "% executed" is computed by one authoritative shared calc path so the grid, export, and dashboard never disagree.
+  5. Cancelled counters are surfaced as a first-class stat alongside Planned / Executed / Pending and are excluded from the "% executed" denominator (consistent with the grid `TERMINAL_STATUSES` treatment).
+  6. Within the active period the dashboard shows a week-wise trend (planned vs executed vs cancelled counters and weekly actual spend) bucketed by `executions.executionDate`, AND a standalone rolling "recent N weeks" view is selectable independently of the active period.
+  7. The user can drill Zone (= `plan_rows.region`) → State → District → Taluka; each level shows planned / executed / cancelled counter counts and planned-vs-actual expense for the rows below it, reusing the cascade utility from `lib/actuals/filter.ts`.
 **Plans**: TBD
 **UI hint**: yes
 
-> **Discuss-step question to resolve here** (do not resolve now): exact completeness math for partial / in-progress actuals — when a plan row has some but not all of its executions, how does it count toward "% executed"? Document the rule unambiguously (it interacts with the Status enum and the multi-unit plan-row grain from Phase 1).
+> **Discuss-step questions to resolve before locking the plan** (do not resolve now): exact completeness math for partial / in-progress actuals — when a plan row has some but not all of its executions, how does it count toward "% executed"? (Interacts with Status enum + multi-unit plan-row grain from Phase 1.) How are Cancelled rows treated in the denominator vs numerator separately from Done? What does "recent N weeks" default to (4 / 8 / 12)? Does the week-wise trend live on the main dashboard or in a drawer? Is Zone→Taluka drill-down a collapsible tree on one page or router-pushed breadcrumb pages? How do exception-source plan rows from Phase 3.1 (`source = 'exception'`) appear in the Zone breakdown — folded in, sidelined as a parallel "exception spend" bucket, or both views toggleable?
 
 ### Phase 5: Excel Export
 **Goal**: A user can export exactly what they are currently looking at — the filtered grid — to a clean `.xlsx` with correct numeric/currency typing and the activity's column order.
@@ -107,12 +135,13 @@ Decimal phases appear between their surrounding integers in numeric order.
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 → 2 → 3 → 3.1 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 5/5 | Complete   | 2026-06-05 |
 | 2. Plan Upload & Periods | 3/3 | Complete   | 2026-06-05 |
 | 3. Actuals Grid | 5/5 | Complete   | 2026-06-06 |
+| 3.1. Actuals Grid Refinements | 0/5 | Not started | - |
 | 4. Compliance & Dashboard | 0/TBD | Not started | - |
 | 5. Excel Export | 0/TBD | Not started | - |
