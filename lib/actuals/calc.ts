@@ -124,8 +124,8 @@ export function computeDerived(
     ) {
       // D3-04 CRITICAL: totalSqft = length × breadth
       // HEIGHT IS EXCLUDED from the area calculation (stored for reference only).
-      // gsb/nlb computeFrom lists height so the grid refreshes when height changes,
-      // but the formula must NOT multiply by height.
+      // gsb/nlb capture a "Height (ref)" column for documentation; it is NOT in
+      // the totalSqft computeFrom list and never multiplies into the area (P1-4).
       const l = num(f["length"]);
       const b = num(f["breadth"]);
       if (l === null || b === null) return null;

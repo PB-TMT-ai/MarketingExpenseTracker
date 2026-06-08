@@ -1,4 +1,5 @@
 import type { ActivityConfig, FieldDef } from "./types";
+import { STATUS_VALUES } from "./status";
 
 /**
  * In-shop Branding — type `measurement`. Plan sheet adds Pin code / GST No. / Mobile No.
@@ -18,7 +19,7 @@ const planColumns: readonly FieldDef[] = [
 ];
 
 const actualColumns: readonly FieldDef[] = [
-  { key: "status", label: "Status", kind: "status", enumValues: ["Pending", "In Progress", "Done"] },
+  { key: "status", label: "Status", kind: "status", enumValues: STATUS_VALUES },
   { key: "length", label: "Length", kind: "number" },
   { key: "breadth", label: "Breadth", kind: "number" },
   {

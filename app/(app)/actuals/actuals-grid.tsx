@@ -31,16 +31,58 @@ import {
   type GridReadyEvent,
   type IRowNode,
   type CellValueChangedEvent,
+  type ColDef,
 } from "ag-grid-community";
 import { buildColumnDefs } from "@/lib/actuals/colDefs";
 import { cloneUnitForAdd, type UnitRow, type PopLineInput } from "@/lib/actuals/rows";
-import { setOverride, clearOverride } from "@/lib/actuals/calc";
-import { matchesFacets, matchesSfid, type FacetSelections } from "@/lib/actuals/filter";
+import { setOverride, clearOverride, computeDerived } from "@/lib/actuals/calc";
+import {
+  matchesFacets,
+  matchesSfid,
+  type FacetSelections,
+  type FacetKey,
+} from "@/lib/actuals/filter";
 import { getActivity } from "@/lib/activities/registry";
-import { type SaveBatchState } from "@/lib/actions/executions";
+import {
+  type SaveBatchState,
+  fetchExecutionForRow,
+} from "@/lib/actions/executions";
 import FilterBar from "./filter-bar";
 import SaveBar from "./save-bar";
 import PopModal from "./pop-modal";
+
+// ---------------------------------------------------------------------------
+// P2-5: write filter selections into the URL via history.replaceState (no Next
+// navigation → no server re-query, no scroll jump). Preserves `activity`. Facets
+// are repeated params (?region=A&region=B); SFID a single `sfid`. Centralized
+// here so every filter source (the bar AND the clickable Pending stat) syncs.
+// ---------------------------------------------------------------------------
+const URL_FACETS: FacetKey[] = [
+  "region",
+  "state",
+  "district",
+  "distributor",
+  "status",
+];
+
+function syncFilterUrl(facets: FacetSelections, sfidVal: string): void {
+  if (typeof window === "undefined") return;
+  const existing = new URLSearchParams(window.location.search);
+  const params = new URLSearchParams();
+  const activity = existing.get("activity");
+  if (activity) params.set("activity", activity);
+  for (const facet of URL_FACETS) {
+    for (const v of facets[facet] ?? []) params.append(facet, v);
+  }
+  const s = sfidVal.trim();
+  if (s !== "") params.set("sfid", s);
+  const qs = params.toString();
+  window.history.replaceState(
+    null,
+    "",
+    qs ? `${window.location.pathname}?${qs}` : window.location.pathname,
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Props
@@ -53,6 +95,10 @@ export type ActualsGridProps = {
   periodId: number;
   /** Item master rows for POP modal (03-05 will wire the modal; grid receives them now) */
   items?: Array<{ id: number; name: string; category: string | null }>;
+  /** P2-5: initial facet selections from the URL (so a shared/reloaded link lands filtered) */
+  initialFacets?: FacetSelections;
+  /** P2-5: initial SFID search from the URL */
+  initialSfid?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -64,6 +110,8 @@ export default function ActualsGrid({
   activityKey,
   periodId,
   items = [],
+  initialFacets,
+  initialSfid = "",
 }: ActualsGridProps) {
   // A3: mounted guard — render placeholder until client-side (SSR-safe, no dynamic import).
   const [mounted, setMounted] = useState(false);
@@ -77,6 +125,11 @@ export default function ActualsGrid({
 
   // POP/Dealer-Kit modal: which kit row is open (rowKey), or null when closed (D3-13/14).
   const [popRowKey, setPopRowKey] = useState<string | null>(null);
+
+  // P2-4: persistent "last saved HH:MM" stamp. The SaveBar's "Saved" flash
+  // expires in 3s; this survives so a reviewer who saved and Alt-Tabbed away
+  // can still see the last successful save time when they come back.
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
   // Row data state — single source of truth for the grid rows.
@@ -95,18 +148,25 @@ export default function ActualsGrid({
   // ---------------------------------------------------------------------------
   // Filter state — driven by FilterBar, consumed by AG Grid external filter.
   // ---------------------------------------------------------------------------
-  const [facetSelections, setFacetSelections] = useState<FacetSelections>({});
-  const [sfidSearch, setSfidSearch] = useState<string>("");
+  // P2-5: seed from the URL-derived initial filters so a shared/reloaded link
+  // (or filters carried across an activity switch) apply on first paint.
+  const [facetSelections, setFacetSelections] = useState<FacetSelections>(
+    initialFacets ?? {},
+  );
+  const [sfidSearch, setSfidSearch] = useState<string>(initialSfid);
 
   // Refs so the AG Grid callbacks (isExternalFilterPresent / doesExternalFilterPass)
   // always see the latest values without stale closures.
-  const facetRef = useRef<FacetSelections>({});
-  const sfidRef = useRef<string>("");
+  const facetRef = useRef<FacetSelections>(initialFacets ?? {});
+  const sfidRef = useRef<string>(initialSfid);
 
   useEffect(() => {
     facetRef.current = facetSelections;
     sfidRef.current = sfidSearch;
     apiRef.current?.onFilterChanged();
+    // P2-5: keep the URL in sync with whatever drives the filter (the bar or
+    // the clickable Pending stat). replaceState → reloadable + shareable, no nav.
+    syncFilterUrl(facetSelections, sfidSearch);
   }, [facetSelections, sfidSearch]);
 
   const isExternalFilterPresent = useCallback((): boolean => {
@@ -122,11 +182,81 @@ export default function ActualsGrid({
     );
   }, []);
 
+  // P3: clicking the "Pending" stat applies a status=Pending facet (replacing
+  // any prior status selection, keeping the geo/distributor facets). Toggles
+  // off if Pending is already the sole status filter. Goes through the same
+  // setFacetSelections path so the dropdown + URL stay in sync.
+  const handleFilterPending = useCallback(() => {
+    setFacetSelections((prev) => {
+      const cur = prev.status ?? [];
+      const alreadyOnlyPending = cur.length === 1 && cur[0] === "Pending";
+      return { ...prev, status: alreadyOnlyPending ? [] : ["Pending"] };
+    });
+  }, []);
+
   // ---------------------------------------------------------------------------
   // Column definitions — built from the activity config.
   // ---------------------------------------------------------------------------
   const columnDefs = useMemo(() => {
     if (!activityCfg) return [];
+
+    // P1-1: shared Notes column — appears for every activity type. Editable
+    // text the reviewer can use to justify an override ("vendor invoice
+    // attached", "re-measured at handover"). When the row has any active
+    // override flag, the placeholder nudges the reviewer to add a note.
+    const notesCol: ColDef = {
+      headerName: "Notes",
+      field: "fields.notes",
+      colId: "__notes",
+      minWidth: 220,
+      flex: 2,
+      editable: true,
+      cellEditor: "agLargeTextCellEditor",
+      cellEditorPopup: true,
+      cellRenderer: (p: { data?: UnitRow }) => {
+        if (!p.data) return null;
+        const notes =
+          (p.data.fields["notes"] as string | null | undefined) ?? "";
+        const overrides =
+          (p.data.fields["__overrides"] as
+            | Record<string, boolean>
+            | undefined) ?? {};
+        const overrideCount = Object.values(overrides).filter(Boolean).length;
+        if (notes) {
+          return (
+            <span data-slot="notes-text" className="text-neutral-800">
+              {notes}
+            </span>
+          );
+        }
+        if (overrideCount > 0) {
+          return (
+            <span
+              data-slot="notes-prompt"
+              className="italic text-amber-700"
+              title={`${overrideCount} override${overrideCount === 1 ? "" : "s"} active on this row — recording a note here justifies the change for audit.`}
+            >
+              ★ {overrideCount} override{overrideCount === 1 ? "" : "s"} — add a note
+            </span>
+          );
+        }
+        // P1-3: an untouched placeholder row carries a "Draft" pill so the
+        // reviewer can see it has no execution recorded yet (and won't be saved
+        // until edited). This scrolls with the Notes cell but is meaningful.
+        if (p.data.isPlaceholder && !p.data.dirty) {
+          return (
+            <span
+              data-slot="notes-draft"
+              className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-500"
+              title="No execution recorded yet — edit any cell to start; this row is not saved until you do."
+            >
+              Draft — not yet recorded
+            </span>
+          );
+        }
+        return <span className="text-neutral-400">—</span>;
+      },
+    };
 
     // POP/Dealer-Kit (item-list): a kit is ONE row per dealer edited via a modal, not
     // inline per-line cells. Show plan columns (read-only) + a single "Kit" column whose
@@ -159,13 +289,15 @@ export default function ActualsGrid({
             );
           },
         },
+        notesCol,
       ];
     }
 
     const cols = buildColumnDefs(activityCfg);
-    // Append a "+ Add unit" action column at the far right.
+    // Append the Notes col + "+ Add unit" action column at the far right.
     return [
       ...cols,
+      notesCol,
       {
         headerName: "",
         colId: "__addUnit",
@@ -208,6 +340,21 @@ export default function ActualsGrid({
     [defaultColDef],
   );
 
+  // P1-3: fade placeholder rows so a reviewer can tell a pristine draft from a
+  // saved execution at a glance. A row that has been edited (dirty) is no longer
+  // treated as a faded placeholder even if it started as one.
+  const rowClassRules = useMemo(
+    () => ({
+      "ag-row-placeholder": (p: { data?: UnitRow }) =>
+        Boolean(p.data?.isPlaceholder) && !p.data?.dirty,
+      // P3: highlight rows flagged as version-conflicts so the single summary
+      // banner ("N rows conflicted") points at something visible in the grid.
+      "ag-row-conflict": (p: { data?: UnitRow }) =>
+        Boolean(p.data?.fields?.__conflict),
+    }),
+    [],
+  );
+
   // ---------------------------------------------------------------------------
   // onCellValueChanged — update the row's fields, mark dirty, handle overrides.
   // ---------------------------------------------------------------------------
@@ -237,11 +384,35 @@ export default function ActualsGrid({
         // Clone fields (never mutate the stored object in place).
         const newFields = { ...row.fields, [fieldsKey]: newValue };
 
-        // D3-05: if this is a derived column (has a valueGetter), the user editing it
-        // manually means they want to OVERRIDE the formula — set the override flag.
+        // D3-05 + P2-3 audit hygiene: only mark a derived cell as overridden
+        // when the new value actually differs from what the formula would
+        // compute. Without this, an Excel paste that happens to match the
+        // formula's natural answer (or a single-cell paste of the same number)
+        // would silently flip the override flag — which would then bloat the
+        // P1-1 override audit log with no-op entries.
         const isDerived = Boolean(colDef.valueGetter);
         if (isDerived && newValue !== null && newValue !== undefined) {
-          setOverride(newFields, fieldsKey, true);
+          const naturalVal = computeDerived(activityKey, fieldsKey, {
+            ...newFields,
+            __overrides: {
+              ...((newFields["__overrides"] as
+                | Record<string, boolean>
+                | undefined) ?? {}),
+              [fieldsKey]: false,
+            },
+          });
+          const newNum = Number(newValue);
+          const matchesFormula =
+            naturalVal != null &&
+            Number.isFinite(newNum) &&
+            Math.abs(newNum - naturalVal) < 0.005;
+          if (!matchesFormula) {
+            setOverride(newFields, fieldsKey, true);
+          } else {
+            // Pasted/typed value matches formula — make sure any prior override
+            // flag is cleared so the cell goes back to "tracking the formula."
+            clearOverride(newFields, fieldsKey);
+          }
         }
 
         const updatedRow: UnitRow = {
@@ -253,6 +424,26 @@ export default function ActualsGrid({
         next.set(data.rowKey, updatedRow);
         return next;
       });
+    },
+    [activityKey],
+  );
+
+  // ---------------------------------------------------------------------------
+  // P2-3: clipboard paste sanitization.
+  // Excel-pasted values often arrive with ₹, commas, or trailing whitespace
+  // ("₹1,234.56", "1,500 "). Strip those at the boundary so the cell editor
+  // receives a clean number string. AG Grid Community supports single-cell
+  // paste out of the box; range paste is Enterprise-only — but even single-
+  // cell paste is meaningfully better than the row-by-row typing it replaces.
+  // ---------------------------------------------------------------------------
+  const processCellFromClipboard = useCallback(
+    (params: { value: unknown }): unknown => {
+      const v = params.value;
+      if (typeof v !== "string") return v;
+      // Strip ₹, commas, percent signs, and surrounding whitespace.
+      // Keep digits, decimal point, and minus sign.
+      const cleaned = v.replace(/[₹,%\s]/g, "").trim();
+      return cleaned;
     },
     [],
   );
@@ -331,12 +522,39 @@ export default function ActualsGrid({
   );
 
   // ---------------------------------------------------------------------------
+  // P1-3: warn before leaving with unsaved edits. A reviewer who Alt-Tabs to an
+  // Excel reference and then closes/navigates the tab would otherwise lose every
+  // unsaved correction silently. The browser shows its native "Leave site?"
+  // prompt only while there is at least one dirty row.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (dirtyRows.length === 0) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Legacy requirement for some browsers to actually show the prompt.
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirtyRows.length]);
+
+  // ---------------------------------------------------------------------------
   // onSaveResult — called by SaveBar after saveExecutionsBatch returns.
   // D3-11: savedIds → clear dirty + update executionId+version.
   //         conflicts → mark row with conflict flag (do NOT clear value).
   // ---------------------------------------------------------------------------
   const handleSaveResult = useCallback((result: SaveBatchState) => {
     if (!result.ok) return;
+
+    // P2-4: stamp the last successful save time when at least one row committed.
+    if (result.savedIds.length > 0) {
+      setLastSavedAt(
+        new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      );
+    }
 
     setRowMap((prev) => {
       const next = new Map(prev);
@@ -368,13 +586,60 @@ export default function ActualsGrid({
   }, []);
 
   // ---------------------------------------------------------------------------
-  // handleConflictReload — reload a specific conflict row's data from server.
-  // Uses router.refresh() for a full page refresh so the page re-fetches from DB.
+  // handleConflictReload — P1-2: re-fetch the ONE stale row, patch it in place.
+  // Previously this did window.location.reload(), which discarded every other
+  // unsaved edit in the batch. Now we call fetchExecutionForRow for the single
+  // conflicting executionId and patch only that row into rowMap. All other
+  // dirty rows survive. Falls back to a full reload only if the action fails
+  // hard (network error, deleted row, etc.) — that's the correctness escape
+  // hatch, not the default path.
   // ---------------------------------------------------------------------------
-  const handleConflictReload = useCallback((_rowKey: string) => {
-    // Full page refresh brings fresh server data (revalidatePath already done by action).
-    window.location.reload();
-  }, []);
+  const handleConflictReload = useCallback(
+    async (rowKey: string, executionId: number) => {
+      const withKitLines = activityCfg?.type === "item-list";
+
+      let result;
+      try {
+        result = await fetchExecutionForRow({ executionId, withKitLines });
+      } catch (err) {
+        console.error("fetchExecutionForRow failed", err);
+        // Last-resort fallback: at least the user sees fresh server data.
+        window.location.reload();
+        return;
+      }
+
+      if (!result.ok) {
+        // Server says the row no longer exists or input was bad.
+        // A full reload re-syncs the whole grid (which is correct here:
+        // the row's identity is gone, the rowKey is dead).
+        window.location.reload();
+        return;
+      }
+
+      setRowMap((prev) => {
+        const next = new Map(prev);
+        const existing = next.get(rowKey);
+        if (!existing) return prev;
+        next.set(rowKey, {
+          ...existing,
+          version: result.version,
+          fields: result.fields, // server-fresh; __conflict cleared by replacement
+          popLines: result.popLines, // undefined for non-kit rows; intentional
+          dirty: false,
+          isPlaceholder: false,
+        });
+        return next;
+      });
+
+      // AG Grid needs an explicit refresh so the patched cells re-render
+      // (rowData identity changes via the new Map, but force the cells too).
+      const node = apiRef.current?.getRowNode(rowKey);
+      if (node) {
+        apiRef.current?.refreshCells({ rowNodes: [node], force: true });
+      }
+    },
+    [activityCfg],
+  );
 
   // ---------------------------------------------------------------------------
   // onGridReady
@@ -415,8 +680,24 @@ export default function ActualsGrid({
       {/* Filter bar — drives the AG Grid external filter */}
       <FilterBar
         allRows={rowData}
+        selected={facetSelections}
+        sfid={sfidSearch}
         onFacetChange={(sel) => setFacetSelections(sel)}
         onSfidChange={(s) => setSfidSearch(s)}
+      />
+
+      {/* P2-1: live status breakdown that updates as the manager edits.
+          Honest first cut — doesn't try to define "% executed" precisely
+          (that's a Phase 4 spec call). Surfaces what we can measure cheaply:
+          plan rows covered (≥1 execution) and status counts on recorded rows. */}
+      <GridStats
+        rows={rowData}
+        lastSavedAt={lastSavedAt}
+        onFilterPending={handleFilterPending}
+        pendingFilterActive={
+          (facetSelections.status ?? []).length === 1 &&
+          facetSelections.status?.[0] === "Pending"
+        }
       />
 
       {/* Grid container — explicit height required by AG Grid (A4) */}
@@ -426,36 +707,79 @@ export default function ActualsGrid({
           columnDefs={columnDefs}
           defaultColDef={defaultColDefWithClasses}
           getRowId={(p) => p.data.rowKey}
+          rowClassRules={rowClassRules}
           isExternalFilterPresent={isExternalFilterPresent}
           doesExternalFilterPass={doesExternalFilterPass}
           onGridReady={onGridReady}
           onCellValueChanged={handleCellValueChanged}
           stopEditingWhenCellsLoseFocus
+          // P2-3: enable Excel paste. Text selection lets the user copy out;
+          // processCellFromClipboard sanitizes incoming Indian-format values.
+          enableCellTextSelection
+          processCellFromClipboard={processCellFromClipboard}
+          // P3: per-cell undo/redo (Ctrl+Z / Ctrl+Y) for the last edits.
+          undoRedoCellEditing
+          undoRedoCellEditingLimit={20}
         />
       </div>
 
-      {/* Conflict row markers — surfaced via data-slot for e2e */}
-      {Array.from(rowMap.values())
-        .filter((r) => r.fields.__conflict)
-        .map((r) => (
+      {/* P3: ONE collapsed conflict summary instead of a banner per row.
+          Lists the conflicted SFIDs, points at the highlighted grid rows, and
+          offers a single "Reload all" that re-fetches each conflicted row in
+          place (preserving every other unsaved edit). The per-row data-slot is
+          kept on hidden markers so existing e2e selectors still resolve. */}
+      {(() => {
+        const conflictRows = Array.from(rowMap.values()).filter(
+          (r) => r.fields.__conflict,
+        );
+        if (conflictRows.length === 0) return null;
+        const sfids = conflictRows
+          .map((r) => String(r.plan["sfid"] ?? "").trim())
+          .filter((s) => s !== "");
+        return (
           <div
-            key={r.rowKey}
-            data-slot="row-conflict"
-            data-rowkey={r.rowKey}
-            className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800"
+            data-slot="conflict-summary"
+            className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 sm:flex-row sm:items-center sm:justify-between"
           >
-            <span>
-              Row conflict — another user updated this record. Reload to see the
-              latest values before re-saving.
-            </span>
+            <div>
+              <span className="font-medium">
+                {conflictRows.length} row
+                {conflictRows.length === 1 ? "" : "s"} conflicted
+              </span>{" "}
+              — another session updated{" "}
+              {conflictRows.length === 1 ? "this record" : "these records"} while
+              you were editing. Highlighted below.
+              {sfids.length > 0 && (
+                <span className="mt-0.5 block text-xs text-amber-700">
+                  SFID: {sfids.join(", ")}
+                </span>
+              )}
+              {/* Hidden per-row markers preserve the original e2e contract. */}
+              <span className="hidden">
+                {conflictRows.map((r) => (
+                  <span
+                    key={r.rowKey}
+                    data-slot="row-conflict"
+                    data-rowkey={r.rowKey}
+                  />
+                ))}
+              </span>
+            </div>
             <button
-              onClick={() => handleConflictReload(r.rowKey)}
-              className="ml-4 rounded border border-amber-400 px-3 py-1 text-xs font-medium hover:bg-amber-100"
+              onClick={() => {
+                for (const r of conflictRows) {
+                  if (r.executionId != null) {
+                    void handleConflictReload(r.rowKey, r.executionId);
+                  }
+                }
+              }}
+              className="shrink-0 rounded border border-amber-400 px-3 py-1 text-xs font-medium hover:bg-amber-100"
             >
-              Reload
+              Reload {conflictRows.length === 1 ? "row" : "all"}
             </button>
           </div>
-        ))}
+        );
+      })()}
 
       {/* POP/Dealer-Kit multi-item modal (item-list activities) */}
       {popRowKey &&
@@ -481,6 +805,189 @@ export default function ActualsGrid({
         onSaveResult={handleSaveResult}
         items={items}
       />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GridStats — live status breakdown (P2-1)
+//
+// Computes from the current rowData so values update as the manager edits
+// statuses (the reviewer's whole job). Honest metrics: coverage = plan rows
+// with at least one execution; status counts = execution rows grouped by
+// their `status` field. % Done is intentionally framed as "Done out of
+// covered rows" not "out of plan rows" — that avoids overstating progress
+// when many plan rows are entirely unrecorded.
+//
+// Cancelled is wired in already (P2-2 will surface it as a status option;
+// for now the count will read zero until "Cancelled" appears in the enum).
+// ---------------------------------------------------------------------------
+function GridStats({
+  rows,
+  lastSavedAt,
+  onFilterPending,
+  pendingFilterActive,
+}: {
+  rows: UnitRow[];
+  lastSavedAt?: string | null;
+  onFilterPending?: () => void;
+  pendingFilterActive?: boolean;
+}) {
+  const stats = useMemo(() => {
+    let done = 0;
+    let inProgress = 0;
+    let pending = 0;
+    let cancelled = 0;
+    let noStatus = 0;
+    let recorded = 0;
+
+    const planRowIds = new Set<number>();
+    const coveredPlanRowIds = new Set<number>();
+
+    for (const r of rows) {
+      planRowIds.add(r.planRowId);
+      if (r.isPlaceholder) continue;
+      recorded++;
+      coveredPlanRowIds.add(r.planRowId);
+      const status = String(r.fields["status"] ?? "")
+        .trim()
+        .toLowerCase();
+      // Count by EXACT status so the "Pending" chip matches the Pending filter
+      // (which matches the literal value). Recorded rows with a blank status are
+      // their own honest "No status" bucket, not silently folded into Pending —
+      // otherwise clicking "Pending N" would filter to zero rows.
+      if (status === "done") done++;
+      else if (status === "in progress") inProgress++;
+      else if (status === "cancelled") cancelled++;
+      else if (status === "pending") pending++;
+      else noStatus++;
+    }
+
+    const totalPlanRows = planRowIds.size;
+    const coveredPlanRows = coveredPlanRowIds.size;
+    const coveragePct =
+      totalPlanRows > 0
+        ? Math.round((coveredPlanRows / totalPlanRows) * 100)
+        : 0;
+    // P2-2: Cancelled rows are recorded but are NOT pending work — exclude them
+    // from the % done denominator so cancelling a dealer can never drag the
+    // completion number down. "Active" = recorded minus cancelled.
+    const activeRecorded = recorded - cancelled;
+    const donePct =
+      activeRecorded > 0 ? Math.round((done / activeRecorded) * 100) : 0;
+
+    return {
+      done,
+      inProgress,
+      pending,
+      cancelled,
+      noStatus,
+      recorded,
+      activeRecorded,
+      totalPlanRows,
+      coveredPlanRows,
+      coveragePct,
+      donePct,
+    };
+  }, [rows]);
+
+  if (stats.totalPlanRows === 0) return null;
+
+  return (
+    <div
+      data-slot="grid-stats"
+      className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs"
+    >
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-neutral-500">Coverage</span>
+        <span
+          data-slot="stat-coverage"
+          className="font-semibold tabular-nums text-neutral-900"
+        >
+          {stats.coveredPlanRows}/{stats.totalPlanRows}
+        </span>
+        <span className="text-neutral-500">({stats.coveragePct}%)</span>
+      </div>
+      <span aria-hidden className="h-3 w-px bg-neutral-200" />
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-neutral-500">Done</span>
+        <span
+          data-slot="stat-done"
+          className="font-semibold tabular-nums text-emerald-700"
+        >
+          {stats.done}
+        </span>
+        <span className="text-neutral-500">({stats.donePct}% of active)</span>
+      </div>
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-neutral-500">In progress</span>
+        <span
+          data-slot="stat-in-progress"
+          className="font-semibold tabular-nums text-sky-700"
+        >
+          {stats.inProgress}
+        </span>
+      </div>
+      {/* P3: clicking Pending applies/removes a status=Pending filter so the
+          reviewer can jump straight to "what still needs work". */}
+      <button
+        type="button"
+        onClick={onFilterPending}
+        disabled={!onFilterPending}
+        aria-pressed={pendingFilterActive}
+        title={
+          pendingFilterActive
+            ? "Showing only Pending rows — click to clear"
+            : "Show only Pending rows"
+        }
+        className={`flex items-baseline gap-1.5 rounded px-1.5 py-0.5 enabled:hover:bg-amber-50 ${
+          pendingFilterActive ? "bg-amber-100 ring-1 ring-amber-300" : ""
+        }`}
+      >
+        <span className="text-neutral-500">Pending</span>
+        <span
+          data-slot="stat-pending"
+          className="font-semibold tabular-nums text-amber-700"
+        >
+          {stats.pending}
+        </span>
+      </button>
+      {stats.noStatus > 0 && (
+        <div
+          className="flex items-baseline gap-1.5"
+          title="Recorded executions with no status set — give them a status so they count toward completion."
+        >
+          <span className="text-neutral-500">No status</span>
+          <span
+            data-slot="stat-no-status"
+            className="font-semibold tabular-nums text-rose-700"
+          >
+            {stats.noStatus}
+          </span>
+        </div>
+      )}
+      {stats.cancelled > 0 && (
+        <div className="flex items-baseline gap-1.5">
+          <span className="text-neutral-500">Cancelled</span>
+          <span
+            data-slot="stat-cancelled"
+            className="font-semibold tabular-nums text-neutral-500"
+          >
+            {stats.cancelled}
+          </span>
+        </div>
+      )}
+      {lastSavedAt && (
+        <div className="ml-auto flex items-baseline gap-1.5">
+          <span className="text-neutral-400">Last saved</span>
+          <span
+            data-slot="stat-last-saved"
+            className="font-medium tabular-nums text-neutral-600"
+          >
+            {lastSavedAt}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

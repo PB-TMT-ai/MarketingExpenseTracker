@@ -79,6 +79,18 @@ export type ExecutionRecord = {
   totalSqft: string | null;
   /** Activity-specific measurement fields (jsonb) */
   fields: Record<string, unknown>;
+  /** P1-1: reviewer's free-text justification for overrides; nullable. */
+  notes?: string | null;
+  /**
+   * P1-1: append-only audit of derived-field overrides; nullable when none.
+   * Read-only from the UI — populated server-side at save time.
+   */
+  overridesLog?: Array<{
+    field: string;
+    fromValue: unknown;
+    toValue: unknown;
+    at: string;
+  }> | null;
   version: number;
 };
 
@@ -167,6 +179,13 @@ export function buildRowModel(
         if (exec.perUnitCost != null) mergedFields["perUnitCost"] = exec.perUnitCost;
         if (exec.status != null) mergedFields["status"] = exec.status;
         if (exec.unitNo != null) mergedFields["unitNo"] = exec.unitNo;
+        // P1-1: surface notes + read-only override audit on the row so the
+        // grid can show them. notes is user-editable via the dedicated col;
+        // overridesLog stays read-only (server is the only writer).
+        if (exec.notes != null) mergedFields["notes"] = exec.notes;
+        if (exec.overridesLog != null) {
+          mergedFields["__overridesLog"] = exec.overridesLog;
+        }
 
         rows.push({
           rowKey: `e:${exec.id}`,
