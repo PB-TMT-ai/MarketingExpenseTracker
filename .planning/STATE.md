@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Phase 3 (Actuals Grid) COMPLETE — 5/5 plans; GRID-01..08 delivered; 195 unit + 5 e2e green
-last_updated: "2026-06-06T07:57:01.972Z"
-last_activity: 2026-06-06
+status: in_progress
+stopped_at: Phase 3.1 Plan 01 COMPLETE — migration 0002 (COMP-04 cols + GRID-10 backfill) + default In-Progress + GRID-11 guard; 202 unit green (sequential)
+last_updated: "2026-06-08T12:21:43Z"
+last_activity: 2026-06-08
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 18
+  completed_plans: 14
   percent: 60
 ---
 
@@ -25,20 +25,22 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 
 ## Current Position
 
-Phase: 3 (in progress)
-Plan: 03-04 DONE
-Status: Phase 3 Wave 3 complete — /actuals grid shipped end-to-end (page + AG Grid + filter bar + save bar + e2e); 03-05 (POP modal + Dealer-Certificate polish) next
-Last activity: 2026-06-06
+Phase: 3.1 (in progress) — Actuals Grid Refinements
+Plan: 03_1-01 DONE
+Status: Phase 3.1 Wave 1 complete — migration 0002 owns COMP-04 plan_rows cols (source/exception_reason/created_via/created_at + CHECK) AND the GRID-10 status backfill; rows.ts seeds DEFAULT_STATUS='In Progress' on placeholders + add-unit clones; PlanRowRecord.source surfaced; GRID-11 regression guard added; re-grep confirmed no lock-on-Done. 03_1-02 (GRID-09 perf) / 03_1-03 (COMP-04 backend) next.
+Last activity: 2026-06-08
 
-Phase 3 Wave structure:
+Phase 3 (Actuals Grid) — COMPLETE 5/5 (03-01..03-05).
 
-- Wave 0: 03-01 (AG Grid spike — GO verdict) — DONE
-- Wave 2: 03-02 (pure lib/actuals/* core) — DONE
-- Wave 2: 03-03 (executions data layer + Server Action) — DONE
-- Wave 3: 03-04 (React ActualsGrid component — /actuals route, filter bar, save bar, e2e) — DONE
-- Wave 4: 03-05 (POP modal + Dealer-Certificate polish — depends on 03-04) — TODO
+Phase 3.1 Wave structure:
 
-Progress: [████████░░] 80% (4/5 Phase 3 plans done)
+- Wave 1: 03_1-01 (migration 0002 + default status + Done-lock regression — GRID-10, GRID-11) — DONE
+- Wave 1: 03_1-02 (GRID-09 hot-path perf refactor) — TODO
+- Wave 2: 03_1-03 (COMP-04 backend: addOffPlanExecution + re-upload guard) — TODO
+- Wave 2: 03_1-04 (GRID-12 top+bottom save bar + GRID-13 paste-block) — TODO
+- Wave 3: 03_1-05 (COMP-04 frontend: off-plan modal + pill + e2e) — TODO
+
+Progress: [██░░░░░░░░] 20% (1/5 Phase 3.1 plans done)
 
 ## Performance Metrics
 
@@ -73,6 +75,7 @@ Progress: [████████░░] 80% (4/5 Phase 3 plans done)
 | Phase 03 P02 | 16 min | 3 tasks | 13 files |
 | Phase 03 P03 | 12 min | 3 tasks | 4 files |
 | Phase 03 P04 | 30 min | 3 tasks | 9 files |
+| Phase 03_1 P01 | 21 min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -99,6 +102,10 @@ Recent decisions affecting current work:
 - [03-04]: SaveBar uses useActionState with an inline async wrapper (not a direct Server Action reference) to capture the current dirtyRows closure at click time.
 - [03-04]: window.__actualsGridApi exposed in dev mode for e2e column-virtualization (ensureColumnVisible); production-gated by NODE_ENV check.
 - [03-04]: Conflict rows marked via __conflict flag in row.fields; rendered as banners outside the AG Grid (data-slot=row-conflict); reloads full page to fetch server state.
+- [03_1-01]: D3.1-00/R1 reconciliation re-confirmed at execution start — ZERO source hits for resolveEditable / ==='Done' / metaKey / ctrlKey in lib/ + app/. No lock-on-Done exists; GRID-11 shipped as a regression guard (typeof editable === 'boolean'), nothing removed.
+- [03_1-01]: Migration 0002 owns BOTH the COMP-04 plan_rows DDL (source/exception_reason/created_via/created_at + source CHECK) AND the GRID-10 status backfill DML in ONE file — drizzle-kit generate emits DDL only, so the UPDATE was hand-appended after a --> statement-breakpoint (forward-only, idempotent). Downstream plans must NOT generate competing migrations against this DDL.
+- [03_1-01]: executions.status kept nullable with NO Postgres DB default — app (buildRowModel/cloneUnitForAdd via DEFAULT_STATUS const) is the single source of truth for new-row defaults (D3.1-03); backfill is a one-time data correction.
+- [03_1-01]: source modeled as text + CHECK ('plan-upload','exception'), NOT pgEnum — mirrors the status precedent; adding a future source value stays a one-line CHECK edit.
 
 ### Pending Todos
 
@@ -125,9 +132,10 @@ Items acknowledged and carried forward from previous milestone close:
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
 | Test-infra | DEF-02-01-01 — PGlite WASM Aborted in periods.test.ts + items.test.ts | RESOLVED (5213277) | 2026-06-05 / Plan 02-01 |
+| Test-infra | DEF-03_1-01-01 — vitest file-parallelism vs PGlite single-connection: `npm test` (parallel) times out DB-backed suites (incl. untouched plans.test.ts); `--no-file-parallelism` is green (14 files / 202 tests). Recommend pinning `test.fileParallelism:false` in vitest.config.ts. | OPEN | 2026-06-08 / Plan 03_1-01 |
 
 ## Session Continuity
 
-Last session: 2026-06-06T07:57:01.941Z
-Stopped at: Phase 3 (Actuals Grid) COMPLETE — 5/5 plans; GRID-01..08 delivered; 195 unit + 5 e2e green
+Last session: 2026-06-08T12:21:43Z
+Stopped at: Phase 3.1 Plan 01 COMPLETE — migration 0002 (COMP-04 plan_rows cols + GRID-10 status backfill) + DEFAULT_STATUS 'In Progress' (rows.ts both branches) + PlanRowRecord.source + GRID-11 regression guard + migrate-0002.test.ts. 202 unit green (sequential / --no-file-parallelism). Off-plan guard structurally untouched. Next: 03_1-02 (GRID-09 perf) or 03_1-03 (COMP-04 backend).
 Resume file: 
