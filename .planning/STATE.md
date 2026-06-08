@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Phase 3.1 Plan 01 COMPLETE — migration 0002 (COMP-04 cols + GRID-10 backfill) + default In-Progress + GRID-11 guard; 202 unit green (sequential)
-last_updated: "2026-06-08T12:21:43Z"
+stopped_at: "Phase 3.1 Plan 03 COMPLETE — COMP-04 off-plan-exception BACKEND: addOffPlanExecution (requireSession + Zod + ONE tx: exception plan_row -> applyServerCalc -> execution) + insertExceptionPlanRow + isUniqueViolation(23505) clean dupe message + R4 re-upload guard (merge-delete scoped to source='plan-upload', exception rows survive). tsc clean; executions.test.ts + plans.test.ts 31/31 green (--no-file-parallelism). Off-plan guard structurally intact (executions has no sfid). Next: 03_1-04 (GRID-12/13) then 03_1-05 (COMP-04 frontend)."
+last_updated: "2026-06-08T18:21:48Z"
 last_activity: 2026-06-08
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 18
-  completed_plans: 14
-  percent: 60
+  completed_plans: 16
+  percent: 89
 ---
 
 # Project State
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 ## Current Position
 
 Phase: 3.1 (in progress) — Actuals Grid Refinements
-Plan: 03_1-01 DONE
-Status: Phase 3.1 Wave 1 complete — migration 0002 owns COMP-04 plan_rows cols (source/exception_reason/created_via/created_at + CHECK) AND the GRID-10 status backfill; rows.ts seeds DEFAULT_STATUS='In Progress' on placeholders + add-unit clones; PlanRowRecord.source surfaced; GRID-11 regression guard added; re-grep confirmed no lock-on-Done. 03_1-02 (GRID-09 perf) / 03_1-03 (COMP-04 backend) next.
+Plan: 03_1-03 DONE
+Status: Phase 3.1 Wave 2 advancing — 03_1-03 (COMP-04 backend) COMPLETE. addOffPlanExecution Server Action inserts ONE exception plan_row (source='exception', created_via='actuals-exception') THEN the execution FK'd to it in one db.transaction, with applyServerCalc trust-recompute (R12), requireSession-first, and isUniqueViolation(23505) returning a clean dupe-SFID message (R3). The R4 cross-phase guard scopes commitPlanUpload's merge-delete to source='plan-upload' so exception rows survive a re-upload (regression test proves it). Off-plan guard structurally intact (executions has no sfid). 03_1-04 (GRID-12/13) + 03_1-05 (COMP-04 frontend modal/pill) remain.
 Last activity: 2026-06-08
 
 Phase 3 (Actuals Grid) — COMPLETE 5/5 (03-01..03-05).
@@ -35,12 +35,12 @@ Phase 3 (Actuals Grid) — COMPLETE 5/5 (03-01..03-05).
 Phase 3.1 Wave structure:
 
 - Wave 1: 03_1-01 (migration 0002 + default status + Done-lock regression — GRID-10, GRID-11) — DONE
-- Wave 1: 03_1-02 (GRID-09 hot-path perf refactor) — TODO
-- Wave 2: 03_1-03 (COMP-04 backend: addOffPlanExecution + re-upload guard) — TODO
+- Wave 1: 03_1-02 (GRID-09 hot-path perf refactor) — DONE
+- Wave 2: 03_1-03 (COMP-04 backend: addOffPlanExecution + re-upload guard) — DONE
 - Wave 2: 03_1-04 (GRID-12 top+bottom save bar + GRID-13 paste-block) — TODO
 - Wave 3: 03_1-05 (COMP-04 frontend: off-plan modal + pill + e2e) — TODO
 
-Progress: [██░░░░░░░░] 20% (1/5 Phase 3.1 plans done)
+Progress: [██████░░░░] 60% (3/5 Phase 3.1 plans done)
 
 ## Performance Metrics
 
@@ -76,6 +76,7 @@ Progress: [██░░░░░░░░] 20% (1/5 Phase 3.1 plans done)
 | Phase 03 P03 | 12 min | 3 tasks | 4 files |
 | Phase 03 P04 | 30 min | 3 tasks | 9 files |
 | Phase 03_1 P01 | 21 min | 3 tasks | 9 files |
+| Phase 03_1 P03 | 10 min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -106,6 +107,11 @@ Recent decisions affecting current work:
 - [03_1-01]: Migration 0002 owns BOTH the COMP-04 plan_rows DDL (source/exception_reason/created_via/created_at + source CHECK) AND the GRID-10 status backfill DML in ONE file — drizzle-kit generate emits DDL only, so the UPDATE was hand-appended after a --> statement-breakpoint (forward-only, idempotent). Downstream plans must NOT generate competing migrations against this DDL.
 - [03_1-01]: executions.status kept nullable with NO Postgres DB default — app (buildRowModel/cloneUnitForAdd via DEFAULT_STATUS const) is the single source of truth for new-row defaults (D3.1-03); backfill is a one-time data correction.
 - [03_1-01]: source modeled as text + CHECK ('plan-upload','exception'), NOT pgEnum — mirrors the status precedent; adding a future source value stays a one-line CHECK edit.
+- [03_1-03]: addOffPlanExecution inserts the exception plan_row FIRST (with sfid) then FKs the execution to its id, both in ONE db.transaction — the off-plan guard (COMP-01) is never weakened: sfid is written ONLY to plan_rows, executions still has no sfid column.
+- [03_1-03]: isUniqueViolation(23505) is a sibling helper to plans.ts isFkRestrictError (which explicitly does NOT cover 23505); dupe-SFID on the exception path returns a clean {ok:false} message ("use + add unit"), never a 500 (R3). Duck-typed on err.cause?.code ?? err.code for PGlite/postgres-js parity.
+- [03_1-03]: R4 cross-phase guard — commitPlanUpload's merge-delete is scoped to source='plan-upload' (snapshot now SELECTs source), so a plan re-upload never deletes/FK-blocks source='exception' rows (D3.1-02). Regression test proves exception X survives re-upload while plan-upload orphan B is deleted.
+- [03_1-03]: addOffPlanExecution signature is single-arg (input: unknown) returning AddOffPlanState, NOT the (prevState, input) useActionState shape — Plan 05's modal calls it directly. No createdBy (single shared password, D3.1-08) — deferred to a future auth phase.
+- [03_1-03]: promoteExecutionColumns extracted as a shared helper so saveExecutionsBatch and addOffPlanExecution use ONE authoritative numeric/status split (Pitfall 9 — no calc-path drift).
 
 ### Pending Todos
 
@@ -136,6 +142,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-08T12:21:43Z
-Stopped at: Phase 3.1 Plan 01 COMPLETE — migration 0002 (COMP-04 plan_rows cols + GRID-10 status backfill) + DEFAULT_STATUS 'In Progress' (rows.ts both branches) + PlanRowRecord.source + GRID-11 regression guard + migrate-0002.test.ts. 202 unit green (sequential / --no-file-parallelism). Off-plan guard structurally untouched. Next: 03_1-02 (GRID-09 perf) or 03_1-03 (COMP-04 backend).
+Last session: 2026-06-08T18:21:48Z
+Stopped at: Phase 3.1 Plan 03 COMPLETE — COMP-04 off-plan-exception BACKEND. addOffPlanExecution (requireSession + Zod reason-required + ONE db.transaction: insertExceptionPlanRow source='exception' -> applyServerCalc -> insertExecution FK'd to it) + isUniqueViolation(23505) clean dupe message (R3) + R4 re-upload guard (commitPlanUpload merge-delete scoped to source='plan-upload'; exception rows survive, regression test proves it). promoteExecutionColumns shared helper extracted. tsc --noEmit clean; executions.test.ts + plans.test.ts 31/31 green (--no-file-parallelism). Off-plan guard structurally intact (executions has no sfid column). Next: 03_1-04 (GRID-12/13) then 03_1-05 (COMP-04 frontend: modal + pill + e2e — consumes addOffPlanExecution/AddOffPlanState).
 Resume file: 

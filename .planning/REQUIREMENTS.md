@@ -54,7 +54,7 @@ Requirements for the initial release. Each maps to a roadmap phase.
 - [x] **COMP-01**: The system structurally prevents recording an actual against an SFID not present in the plan (off-plan guard enforced at the database level)
 - [x] **COMP-02**: Off-plan rows from an actuals import are listed so the user can see what was rejected and why
 - [ ] **COMP-03**: System computes "% of plan executed" (completeness) for the active period, per activity and per filter scope
-- [ ] **COMP-04**: User can record an "off-plan exception" execution (a dealer painted that wasn't in the uploaded plan) via a deliberate, audited affordance that creates ONE plan_row marked `source = 'exception'` plus the execution in a single transaction; bulk plan-upload off-plan rejection (COMP-01/COMP-02) is unchanged; exception rows are distinguishable from plan-uploaded rows for later dashboard reporting (Phase 3.1)
+- [x] **COMP-04**: User can record an "off-plan exception" execution (a dealer painted that wasn't in the uploaded plan) via a deliberate, audited affordance that creates ONE plan_row marked `source = 'exception'` plus the execution in a single transaction; bulk plan-upload off-plan rejection (COMP-01/COMP-02) is unchanged; exception rows are distinguishable from plan-uploaded rows for later dashboard reporting (Phase 3.1)
 
 ### Dashboard
 
@@ -131,7 +131,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | GRID-11 | Phase 3.1 — Actuals Grid Refinements | Complete |
 | GRID-12 | Phase 3.1 — Actuals Grid Refinements | Pending |
 | GRID-13 | Phase 3.1 — Actuals Grid Refinements | Pending |
-| COMP-04 | Phase 3.1 — Actuals Grid Refinements | Pending |
+| COMP-04 | Phase 3.1 — Actuals Grid Refinements | Complete |
 | COMP-03 | Phase 4 — Compliance & Dashboard | Pending |
 | DASH-01 | Phase 4 — Compliance & Dashboard | Pending |
 | DASH-02 | Phase 4 — Compliance & Dashboard | Pending |
