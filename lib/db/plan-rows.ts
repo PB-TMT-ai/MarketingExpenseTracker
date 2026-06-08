@@ -33,6 +33,10 @@ export type PlanRowRecord = {
   dealer: string | null;
   plannedCost: string | null;
   fields: Record<string, unknown>;
+  // COMP-04 (Phase 3.1): provenance column. 'plan-upload' (default) or 'exception'.
+  // listByPeriodActivity does `select()` (all columns), so this flows through automatically
+  // now that the DB column exists (migration 0002). Consumed by Plan 03 (backend) / Plan 05 (pill).
+  source: string;
 };
 
 /** One blocked-dealer row returned by `queryBlockedDealers`. */

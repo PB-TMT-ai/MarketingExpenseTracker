@@ -29,6 +29,7 @@ function makePlanRow(id: number, sfid: string): PlanRowRecord {
     dealer: "Dealer-A",
     plannedCost: "50000",
     fields: { pinCode: "411001" },
+    source: "plan-upload",
   };
 }
 
@@ -73,12 +74,20 @@ describe("buildRowModel — zero executions → placeholder rows", () => {
     expect(rows[0].planRowId).toBe(42);
   });
 
-  it("placeholder row has empty fields", () => {
+  it("placeholder row has no copied execution data (only the default status seeded)", () => {
     const rows = buildRowModel([makePlanRow(1, "SF-1")], []);
-    const { __overrides, ...fieldsWithoutOverrides } = rows[0].fields as Record<string, unknown>;
+    const { __overrides, status, ...fieldsWithoutStatus } = rows[0].fields as Record<string, unknown>;
     void __overrides; // may or may not be present
-    // Only non-execution fields should be present; execution numeric fields absent
+    void status; // GRID-10: status is seeded to the default; asserted separately below
+    // No execution measurement data is copied into a placeholder.
     expect(rows[0].fields["length"]).toBeUndefined();
+    // The ONLY non-__overrides, non-status key set is empty (no execution fields leaked in).
+    expect(Object.keys(fieldsWithoutStatus)).toHaveLength(0);
+  });
+
+  it("GRID-10: placeholder row defaults fields.status to 'In Progress'", () => {
+    const rows = buildRowModel([makePlanRow(1, "SF-1")], []);
+    expect(rows[0].fields["status"]).toBe("In Progress");
   });
 });
 
@@ -208,12 +217,24 @@ describe("cloneUnitForAdd — D3-03 add-unit clone", () => {
     expect(clone.version).toBe(0);
   });
 
-  it("cloned row has empty fields (not copying existing execution data)", () => {
+  it("cloned row copies no execution data (only the default status is seeded)", () => {
     const planRow = makePlanRow(1, "SF-1");
     const execs = [makeExecution(10, 1, { fields: { length: "5" } })];
     const [sourceRow] = buildRowModel([planRow], execs);
     const clone = cloneUnitForAdd(sourceRow);
-    expect(Object.keys(clone.fields).filter((k) => k !== "__overrides")).toHaveLength(0);
+    // GRID-10: the clone seeds status only — no source execution measurement data is carried over.
+    expect(clone.fields["length"]).toBeUndefined();
+    expect(
+      Object.keys(clone.fields).filter((k) => k !== "__overrides" && k !== "status"),
+    ).toHaveLength(0);
+  });
+
+  it("GRID-10: cloned row defaults fields.status to 'In Progress'", () => {
+    const planRow = makePlanRow(1, "SF-1");
+    const execs = [makeExecution(10, 1, { fields: { length: "5" } })];
+    const [sourceRow] = buildRowModel([planRow], execs);
+    const clone = cloneUnitForAdd(sourceRow);
+    expect(clone.fields["status"]).toBe("In Progress");
   });
 
   it("cloned row has isPlaceholder:false (ready to be filled)", () => {
