@@ -20,6 +20,7 @@
 import "./ag-grid-setup";
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -79,24 +80,51 @@ export default function ActualsGrid({
   const [popRowKey, setPopRowKey] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
-  // Row data state — single source of truth for the grid rows.
-  // We keep a Map<rowKey, UnitRow> for O(1) dirty-state management and a parallel
-  // array for rowData so AG Grid can reconcile via getRowId.
+  // Row data state model (GRID-09 hot-path refactor).
+  //
+  // rowsRef  — the AUTHORITATIVE off-React row store (Map<rowKey, UnitRow>). Edits
+  //            mutate this ref + push the single changed row through
+  //            api.applyTransaction({ update: [row] }), so AG Grid refreshes ONLY
+  //            that row's node (matched by getRowId). NO clone-on-edit, NO full
+  //            rowData rebuild, NO setRowData reconcile per keystroke.
+  // dirtyKeys — a Set<rowKey> in React state that drives ONLY the save-bar count.
+  //            It changes at most once per row (first-dirty), not per keystroke, so
+  //            the save-bar re-render is rare.
+  //
+  // AG Grid is seeded ONCE from the initial rows (initialRowData below); after that
+  // the grid owns its node data and we patch via transactions (R10: getRowId set).
   // ---------------------------------------------------------------------------
-  const [rowMap, setRowMap] = useState<Map<string, UnitRow>>(() => {
-    const m = new Map<string, UnitRow>();
-    for (const r of initialRows) m.set(r.rowKey, r);
-    return m;
-  });
+  const rowsRef = useRef<Map<string, UnitRow>>(
+    (() => {
+      const m = new Map<string, UnitRow>();
+      for (const r of initialRows) m.set(r.rowKey, r);
+      return m;
+    })(),
+  );
 
-  // Derive the rowData array from the map (AG Grid reconciles by rowKey via getRowId).
-  const rowData = useMemo(() => Array.from(rowMap.values()), [rowMap]);
+  // dirtyKeys drives the save-bar count (and the derived dirtyRows). State, not ref,
+  // because the save bar must re-render when the count changes.
+  const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(() => new Set());
+
+  // Seed AG Grid's rowData ONCE. We do NOT rebuild this array on edits — applyTransaction
+  // refreshes individual nodes thereafter. FilterBar derives its facet options from the
+  // same initial set (facets are plan-context based; edits don't change the facet domain).
+  const initialRowData = useRef<UnitRow[]>(initialRows).current;
+
+  // version counter bumped whenever conflict markers / row identity change in a way the
+  // render path (conflict banners, POP modal) must observe. Edits do NOT bump this.
+  const [rowsVersion, setRowsVersion] = useState(0);
 
   // ---------------------------------------------------------------------------
   // Filter state — driven by FilterBar, consumed by AG Grid external filter.
   // ---------------------------------------------------------------------------
   const [facetSelections, setFacetSelections] = useState<FacetSelections>({});
   const [sfidSearch, setSfidSearch] = useState<string>("");
+
+  // GRID-09 Fix 3: defer the typed SFID search so onFilterChanged() does not re-run
+  // once per keystroke. facetSelections changes are discrete (dropdown clicks) and
+  // don't need deferral — only the free-text search does.
+  const deferredSfid = useDeferredValue(sfidSearch);
 
   // Refs so the AG Grid callbacks (isExternalFilterPresent / doesExternalFilterPass)
   // always see the latest values without stale closures.
@@ -105,9 +133,9 @@ export default function ActualsGrid({
 
   useEffect(() => {
     facetRef.current = facetSelections;
-    sfidRef.current = sfidSearch;
+    sfidRef.current = deferredSfid;
     apiRef.current?.onFilterChanged();
-  }, [facetSelections, sfidSearch]);
+  }, [facetSelections, deferredSfid]);
 
   const isExternalFilterPresent = useCallback((): boolean => {
     const hasFacets = Object.values(facetRef.current).some((v) => v && v.length > 0);
@@ -213,7 +241,7 @@ export default function ActualsGrid({
   // ---------------------------------------------------------------------------
   const handleCellValueChanged = useCallback(
     (event: CellValueChangedEvent<UnitRow>) => {
-      const { data, colDef, newValue } = event;
+      const { data, colDef, newValue, api } = event;
       if (!data) return;
 
       // Determine the field key from colId (derived cols use colId) or the field path.
@@ -229,30 +257,36 @@ export default function ActualsGrid({
         return;
       }
 
-      setRowMap((prev) => {
-        const next = new Map(prev);
-        const row = next.get(data.rowKey);
-        if (!row) return prev;
+      // GRID-09 hot path: read from the authoritative ref, mutate it, refresh ONLY
+      // this row's node via applyTransaction. No Map clone, no rowData rebuild.
+      const row = rowsRef.current.get(data.rowKey);
+      if (!row) return;
 
-        // Clone fields (never mutate the stored object in place).
-        const newFields = { ...row.fields, [fieldsKey]: newValue };
+      // Clone fields (never mutate the stored fields object in place).
+      const newFields = { ...row.fields, [fieldsKey]: newValue };
 
-        // D3-05: if this is a derived column (has a valueGetter), the user editing it
-        // manually means they want to OVERRIDE the formula — set the override flag.
-        const isDerived = Boolean(colDef.valueGetter);
-        if (isDerived && newValue !== null && newValue !== undefined) {
-          setOverride(newFields, fieldsKey, true);
-        }
+      // D3-05: if this is a derived column (has a valueGetter), the user editing it
+      // manually means they want to OVERRIDE the formula — set the override flag.
+      const isDerived = Boolean(colDef.valueGetter);
+      if (isDerived && newValue !== null && newValue !== undefined) {
+        setOverride(newFields, fieldsKey, true);
+      }
 
-        const updatedRow: UnitRow = {
-          ...row,
-          fields: newFields,
-          dirty: true,
-          isPlaceholder: false, // any edit promotes a placeholder to a real row
-        };
-        next.set(data.rowKey, updatedRow);
-        return next;
-      });
+      const updatedRow: UnitRow = {
+        ...row,
+        fields: newFields,
+        dirty: true,
+        isPlaceholder: false, // any edit promotes a placeholder to a real row
+      };
+      rowsRef.current.set(data.rowKey, updatedRow);
+
+      // Refresh ONLY this row's node — re-runs valueGetter + cellClassRules for it.
+      api.applyTransaction({ update: [updatedRow] });
+
+      // O(1) amortised; only changes the count on the FIRST edit of a given row.
+      setDirtyKeys((prev) =>
+        prev.has(data.rowKey) ? prev : new Set(prev).add(data.rowKey),
+      );
     },
     [],
   );
@@ -262,12 +296,9 @@ export default function ActualsGrid({
   // ---------------------------------------------------------------------------
   function handleAddUnit(row: UnitRow) {
     const newRow = cloneUnitForAdd(row);
-    setRowMap((prev) => {
-      const next = new Map(prev);
-      next.set(newRow.rowKey, newRow);
-      return next;
-    });
-    // Let AG Grid know rowData changed (it will reconcile via getRowId).
+    rowsRef.current.set(newRow.rowKey, newRow);
+    // Insert ONLY the new node — no full rowData rebuild (GRID-09).
+    apiRef.current?.applyTransaction({ add: [newRow] });
   }
 
   // ---------------------------------------------------------------------------
@@ -277,21 +308,23 @@ export default function ActualsGrid({
   // ---------------------------------------------------------------------------
   const handlePopConfirm = useCallback(
     (rowKey: string, lines: PopLineInput[]) => {
-      setRowMap((prev) => {
-        const next = new Map(prev);
-        const row = next.get(rowKey);
-        if (!row) return prev;
+      const row = rowsRef.current.get(rowKey);
+      if (row) {
         const total =
           Math.round(lines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
-        next.set(rowKey, {
+        const updatedRow: UnitRow = {
           ...row,
           popLines: lines,
           fields: { ...row.fields, totalCost: total },
           dirty: true,
           isPlaceholder: false,
-        });
-        return next;
-      });
+        };
+        rowsRef.current.set(rowKey, updatedRow);
+        apiRef.current?.applyTransaction({ update: [updatedRow] });
+        setDirtyKeys((prev) =>
+          prev.has(rowKey) ? prev : new Set(prev).add(rowKey),
+        );
+      }
       setPopRowKey(null);
       const node = apiRef.current?.getRowNode(rowKey);
       if (node) apiRef.current?.refreshCells({ rowNodes: [node], force: true });
@@ -303,17 +336,19 @@ export default function ActualsGrid({
   // clearOverrideForRow — called from a "reset to formula" affordance (inline button).
   // ---------------------------------------------------------------------------
   const handleClearOverride = useCallback((rowKey: string, fieldKey: string) => {
-    setRowMap((prev) => {
-      const next = new Map(prev);
-      const row = next.get(rowKey);
-      if (!row) return prev;
+    const row = rowsRef.current.get(rowKey);
+    if (row) {
       const newFields = { ...row.fields };
       clearOverride(newFields, fieldKey);
       // Clear the stored value so the valueGetter recomputes.
       delete newFields[fieldKey];
-      next.set(rowKey, { ...row, fields: newFields, dirty: true });
-      return next;
-    });
+      const updatedRow: UnitRow = { ...row, fields: newFields, dirty: true };
+      rowsRef.current.set(rowKey, updatedRow);
+      apiRef.current?.applyTransaction({ update: [updatedRow] });
+      setDirtyKeys((prev) =>
+        prev.has(rowKey) ? prev : new Set(prev).add(rowKey),
+      );
+    }
     // Refresh the specific cell so the valueGetter fires again.
     const node = apiRef.current?.getRowNode(rowKey);
     if (node) {
@@ -323,11 +358,16 @@ export default function ActualsGrid({
   void handleClearOverride; // referenced in future 03-05 reset affordance
 
   // ---------------------------------------------------------------------------
-  // Dirty row count (for SaveBar)
+  // Dirty rows (for SaveBar) — derived from the dirtyKeys Set, recomputed only when
+  // the Set changes (i.e. a row becomes first-dirty or is cleared on save), NOT on
+  // every keystroke. Each key resolves to its latest object in rowsRef.
   // ---------------------------------------------------------------------------
   const dirtyRows = useMemo(
-    () => Array.from(rowMap.values()).filter((r) => r.dirty),
-    [rowMap],
+    () =>
+      [...dirtyKeys]
+        .map((k) => rowsRef.current.get(k))
+        .filter((r): r is UnitRow => Boolean(r) && Boolean(r?.dirty)),
+    [dirtyKeys],
   );
 
   // ---------------------------------------------------------------------------
@@ -338,33 +378,60 @@ export default function ActualsGrid({
   const handleSaveResult = useCallback((result: SaveBatchState) => {
     if (!result.ok) return;
 
-    setRowMap((prev) => {
-      const next = new Map(prev);
+    const rows = rowsRef.current;
+    const updated: UnitRow[] = [];
+    const clearedKeys: string[] = [];
 
-      for (const saved of result.savedIds) {
-        const row = next.get(saved.rowKey);
-        if (!row) continue;
-        next.set(saved.rowKey, {
-          ...row,
-          executionId: saved.id,
-          version: saved.version,
-          dirty: false,
-          isPlaceholder: false,
-        });
-      }
+    // Saved rows → clear dirty, set executionId + version (D3-11). The conflict
+    // rows below are still version-bumped from the same saved set when applicable.
+    for (const saved of result.savedIds) {
+      const row = rows.get(saved.rowKey);
+      if (!row) continue;
+      const next: UnitRow = {
+        ...row,
+        executionId: saved.id,
+        version: saved.version,
+        dirty: false,
+        isPlaceholder: false,
+      };
+      rows.set(saved.rowKey, next);
+      updated.push(next);
+      clearedKeys.push(saved.rowKey);
+    }
 
-      // Mark conflict rows — do NOT overwrite values (D3-11).
-      for (const conflictId of result.conflicts) {
-        // Conflicts are execution IDs; find the matching row by executionId.
-        for (const [key, row] of next) {
-          if (row.executionId === conflictId) {
-            next.set(key, { ...row, fields: { ...row.fields, __conflict: true } });
-          }
+    // Mark conflict rows — do NOT overwrite values (D3-11). Conflicts are execution
+    // IDs; find the matching row by executionId.
+    for (const conflictId of result.conflicts) {
+      for (const [key, row] of rows) {
+        if (row.executionId === conflictId) {
+          const next: UnitRow = {
+            ...row,
+            fields: { ...row.fields, __conflict: true },
+          };
+          rows.set(key, next);
+          updated.push(next);
         }
       }
+    }
 
-      return next;
-    });
+    // Refresh the affected nodes in one transaction (matched by getRowId).
+    if (updated.length > 0) {
+      apiRef.current?.applyTransaction({ update: updated });
+    }
+
+    // Remove cleared (saved) keys from the dirty set — drives the save-bar count down.
+    if (clearedKeys.length > 0) {
+      setDirtyKeys((prev) => {
+        const next = new Set(prev);
+        for (const k of clearedKeys) next.delete(k);
+        return next;
+      });
+    }
+
+    // Bump the render version so the conflict-banner list re-derives from rowsRef.
+    if (result.conflicts.length > 0) {
+      setRowsVersion((v) => v + 1);
+    }
   }, []);
 
   // ---------------------------------------------------------------------------
@@ -387,6 +454,19 @@ export default function ActualsGrid({
       (window as unknown as Record<string, unknown>).__actualsGridApi = e.api;
     }
   }, []);
+
+  // ---------------------------------------------------------------------------
+  // Conflict-banner rows — derived from the authoritative rowsRef. Recomputed when
+  // rowsVersion bumps (handleSaveResult flags conflicts). The grid itself reflects
+  // conflict state per-node via applyTransaction; this list drives the banners only.
+  // ---------------------------------------------------------------------------
+  const conflictRows = useMemo(
+    () => [...rowsRef.current.values()].filter((r) => r.fields.__conflict),
+    // rowsVersion is the explicit dependency: rowsRef is mutable, so the version
+    // counter is what tells React the conflict set may have changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rowsVersion],
+  );
 
   // ---------------------------------------------------------------------------
   // Render
@@ -412,17 +492,23 @@ export default function ActualsGrid({
 
   return (
     <div className="flex flex-col gap-3" data-slot="actuals-grid">
-      {/* Filter bar — drives the AG Grid external filter */}
+      {/* Filter bar — drives the AG Grid external filter. Facets are derived from the
+          plan context, which the initial row set already covers (edits don't change
+          the facet domain), so we feed it the seed array. */}
       <FilterBar
-        allRows={rowData}
+        allRows={initialRowData}
         onFacetChange={(sel) => setFacetSelections(sel)}
         onSfidChange={(s) => setSfidSearch(s)}
       />
 
-      {/* Grid container — explicit height required by AG Grid (A4) */}
+      {/* Grid container — explicit height required by AG Grid (A4).
+          rowData is seeded ONCE; subsequent edits patch nodes via applyTransaction
+          (GRID-09). getRowId is REQUIRED for transaction node-matching (R10).
+          singleClickEdit: status opens on one click. animateRows=false: no layout
+          cost on bulk updates for a data-entry grid. Virtualization stays ON. */}
       <div style={{ height: 600, width: "100%" }}>
         <AgGridReact<UnitRow>
-          rowData={rowData}
+          rowData={initialRowData}
           columnDefs={columnDefs}
           defaultColDef={defaultColDefWithClasses}
           getRowId={(p) => p.data.rowKey}
@@ -431,36 +517,36 @@ export default function ActualsGrid({
           onGridReady={onGridReady}
           onCellValueChanged={handleCellValueChanged}
           stopEditingWhenCellsLoseFocus
+          singleClickEdit
+          animateRows={false}
         />
       </div>
 
       {/* Conflict row markers — surfaced via data-slot for e2e */}
-      {Array.from(rowMap.values())
-        .filter((r) => r.fields.__conflict)
-        .map((r) => (
-          <div
-            key={r.rowKey}
-            data-slot="row-conflict"
-            data-rowkey={r.rowKey}
-            className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800"
+      {conflictRows.map((r) => (
+        <div
+          key={r.rowKey}
+          data-slot="row-conflict"
+          data-rowkey={r.rowKey}
+          className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800"
+        >
+          <span>
+            Row conflict — another user updated this record. Reload to see the
+            latest values before re-saving.
+          </span>
+          <button
+            onClick={() => handleConflictReload(r.rowKey)}
+            className="ml-4 rounded border border-amber-400 px-3 py-1 text-xs font-medium hover:bg-amber-100"
           >
-            <span>
-              Row conflict — another user updated this record. Reload to see the
-              latest values before re-saving.
-            </span>
-            <button
-              onClick={() => handleConflictReload(r.rowKey)}
-              className="ml-4 rounded border border-amber-400 px-3 py-1 text-xs font-medium hover:bg-amber-100"
-            >
-              Reload
-            </button>
-          </div>
-        ))}
+            Reload
+          </button>
+        </div>
+      ))}
 
       {/* POP/Dealer-Kit multi-item modal (item-list activities) */}
       {popRowKey &&
         (() => {
-          const row = rowMap.get(popRowKey);
+          const row = rowsRef.current.get(popRowKey);
           if (!row) return null;
           return (
             <PopModal
