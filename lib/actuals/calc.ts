@@ -31,8 +31,11 @@ import type {} from "../activities/types";
 /**
  * Strip ₹, commas, and whitespace then coerce to a finite number.
  * Returns null (not NaN) when the value is absent, empty, or non-numeric.
+ *
+ * Exported so the GRID-13 paste coercer (lib/actuals/coerce.ts) reuses the IDENTICAL
+ * numeric-parse logic — one authoritative number primitive, no drift (Pitfall 9).
  */
-function num(v: unknown): number | null {
+export function num(v: unknown): number | null {
   if (v == null) return null;
   const s = typeof v === "string" ? v.replace(/[₹,\s]/g, "") : String(v);
   if (s === "") return null;

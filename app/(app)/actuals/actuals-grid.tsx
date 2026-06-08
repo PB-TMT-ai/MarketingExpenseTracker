@@ -32,6 +32,7 @@ import {
   type GridReadyEvent,
   type IRowNode,
   type CellValueChangedEvent,
+  type Column,
 } from "ag-grid-community";
 import { buildColumnDefs } from "@/lib/actuals/colDefs";
 import { cloneUnitForAdd, type UnitRow, type PopLineInput } from "@/lib/actuals/rows";
@@ -41,7 +42,9 @@ import {
   useSaveExecutions,
   type UnitPatch,
 } from "@/lib/actuals/use-save-executions";
+import { coerceForKind } from "@/lib/actuals/coerce";
 import { getActivity } from "@/lib/activities/registry";
+import type { FieldKind } from "@/lib/activities/types";
 import { type SaveBatchState } from "@/lib/actions/executions";
 import FilterBar from "./filter-bar";
 import SaveBar from "./save-bar";
@@ -77,11 +80,30 @@ export default function ActualsGrid({
   // Resolve activity config for colDefs
   const activityCfg = useMemo(() => getActivity(activityKey), [activityKey]);
 
+  // GRID-13: map each actual-column key → its FieldDef.kind, built ONCE from the resolved
+  // activity config. The paste handler resolves a target column's coercion kind via this
+  // lookup (default "text" for any unmapped column — safe, no numeric coercion). Built here
+  // (not in colDefs.ts, which is outside this plan's files_modified).
+  const kindByKey = useMemo(
+    () =>
+      new Map<string, FieldKind>(
+        (activityCfg?.actualColumns ?? []).map((f) => [f.key, f.kind]),
+      ),
+    [activityCfg],
+  );
+
   // AG Grid API ref
   const apiRef = useRef<GridApi<UnitRow> | null>(null);
 
+  // Grid container element ref — the GRID-13 paste listener attaches here (scoped to grid
+  // focus, NOT document, so we don't hijack pastes elsewhere on the page).
+  const gridWrapRef = useRef<HTMLDivElement>(null);
+
   // POP/Dealer-Kit modal: which kit row is open (rowKey), or null when closed (D3-13/14).
   const [popRowKey, setPopRowKey] = useState<string | null>(null);
+
+  // GRID-13 overflow note — set when a pasted block has cells outside the editable area.
+  const [pasteNote, setPasteNote] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
   // Row data state model (GRID-09 hot-path refactor).
@@ -503,6 +525,142 @@ export default function ActualsGrid({
   }, [dirtyCount, pending, submit]);
 
   // ---------------------------------------------------------------------------
+  // GRID-13 — paste-block handler.
+  //
+  // AG Grid Community has NO clipboard/range/fill (all Enterprise, R7) — so this is a plain
+  // DOM `paste` listener on the grid container ref (scoped to grid focus, not document).
+  //
+  // Flow:
+  //   1. Read clipboardData text/plain; require a focused cell (the anchor).
+  //   2. Parse Excel/Sheets TSV into a 2-D array (\n rows, \t cols).
+  //   3. Map onto the EDITABLE fields.* columns at/after the anchor, left→right
+  //      (read-only plan.* and action columns are SKIPPED — security + default rule).
+  //   4. Walk DISPLAYED rows from the anchor down via getDisplayedRowAtIndex (R5 — respects
+  //      the active sort/filter; never the rowData array order).
+  //   5. Coerce each cell per its column kind (coerceForKind); derived cells get the override
+  //      flag (setOverride — LOCKED, identical to a manual edit).
+  //   6. Write the WHOLE block via ONE applyTransaction({ update }) (GRID-09 batched path),
+  //      mark the changed rows dirty in ONE setState, and surface an overflow note for any
+  //      cells that fell off the right edge or the bottom.
+  //
+  // Security invariant (LOCKED): writes ONLY fields.* on EXISTING displayed rows (each
+  // already has a planRowId). It can NEVER introduce an SFID or bypass the off-plan guard.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const el = gridWrapRef.current;
+    if (!el) return;
+
+    const onPaste = (e: ClipboardEvent) => {
+      const api = apiRef.current;
+      if (!api) return;
+
+      const text = e.clipboardData?.getData("text/plain");
+      if (!text) return;
+
+      const focused = api.getFocusedCell();
+      if (!focused) return;
+      e.preventDefault();
+
+      // (2) Parse TSV: strip a single trailing newline, then split rows + columns.
+      const matrix = text
+        .replace(/\r\n?$|\n$/, "")
+        .split(/\r\n|\n|\r/)
+        .map((line) => line.split("\t"));
+
+      // (3) Editable fields.* columns at/after the anchor (skip read-only plan.* + actions).
+      const allCols = api.getAllDisplayedColumns();
+      const anchorColIdx = allCols.findIndex(
+        (c) => c.getColId() === focused.column.getColId(),
+      );
+      if (anchorColIdx < 0) return;
+      const editableCols = allCols.slice(anchorColIdx).filter((c) => {
+        const def = c.getColDef();
+        return (
+          def.editable === true &&
+          typeof def.field === "string" &&
+          def.field.startsWith("fields.")
+        );
+      });
+
+      // Resolve a column's coercion kind via the activity registry (default "text").
+      const kindOf = (col: Column): FieldKind => {
+        const field = col.getColDef().field;
+        const key =
+          typeof field === "string" && field.startsWith("fields.")
+            ? field.slice("fields.".length)
+            : "";
+        return kindByKey.get(key) ?? "text";
+      };
+
+      // (4)+(5) Walk displayed rows from the anchor down; coerce + write into cloned fields.
+      const changed: UnitRow[] = [];
+      let dropped = 0;
+
+      for (let i = 0; i < matrix.length; i++) {
+        const node = api.getDisplayedRowAtIndex(focused.rowIndex + i);
+        if (!node?.data) {
+          // Ran off the bottom — every cell in this pasted row is dropped.
+          dropped += matrix[i].length;
+          continue;
+        }
+        const row = rowsRef.current.get(node.data.rowKey);
+        if (!row) {
+          dropped += matrix[i].length;
+          continue;
+        }
+
+        const newFields = { ...row.fields };
+        for (let j = 0; j < matrix[i].length; j++) {
+          const col = editableCols[j];
+          if (!col) {
+            dropped++; // Ran off the right edge (no editable column here).
+            continue;
+          }
+          const def = col.getColDef();
+          const key = (def.field as string).slice("fields.".length);
+          const coerced = coerceForKind(matrix[i][j], kindOf(col));
+          newFields[key] = coerced;
+          // Derived cell (has a valueGetter): a pasted value overrides the formula (LOCKED).
+          if (def.valueGetter && coerced != null) {
+            setOverride(newFields, key, true);
+          }
+        }
+
+        const updated: UnitRow = {
+          ...row,
+          fields: newFields,
+          dirty: true,
+          isPlaceholder: false, // pasting promotes a placeholder to a real row
+        };
+        rowsRef.current.set(node.data.rowKey, updated);
+        changed.push(updated);
+      }
+
+      // (6) ONE transaction for the whole block (GRID-09 batched write).
+      if (changed.length > 0) {
+        api.applyTransaction({ update: changed });
+        setDirtyKeys((prev) => {
+          const next = new Set(prev);
+          for (const r of changed) next.add(r.rowKey);
+          return next;
+        });
+      }
+
+      // Overflow note — neutral inline note (planner copy). Auto-dismisses.
+      if (dropped > 0) {
+        setPasteNote(
+          `Pasted block; ${dropped} cell${dropped === 1 ? "" : "s"} outside the editable area ${dropped === 1 ? "was" : "were"} ignored.`,
+        );
+      } else {
+        setPasteNote(null);
+      }
+    };
+
+    el.addEventListener("paste", onPaste);
+    return () => el.removeEventListener("paste", onPaste);
+  }, [kindByKey]);
+
+  // ---------------------------------------------------------------------------
   // onGridReady
   // ---------------------------------------------------------------------------
   const onGridReady = useCallback((e: GridReadyEvent<UnitRow>) => {
@@ -577,8 +735,9 @@ export default function ActualsGrid({
           rowData is seeded ONCE; subsequent edits patch nodes via applyTransaction
           (GRID-09). getRowId is REQUIRED for transaction node-matching (R10).
           singleClickEdit: status opens on one click. animateRows=false: no layout
-          cost on bulk updates for a data-entry grid. Virtualization stays ON. */}
-      <div style={{ height: 600, width: "100%" }}>
+          cost on bulk updates for a data-entry grid. Virtualization stays ON.
+          gridWrapRef: the GRID-13 paste listener attaches here (scoped to grid focus). */}
+      <div ref={gridWrapRef} style={{ height: 600, width: "100%" }}>
         <AgGridReact<UnitRow>
           rowData={initialRowData}
           columnDefs={columnDefs}
@@ -593,6 +752,24 @@ export default function ActualsGrid({
           animateRows={false}
         />
       </div>
+
+      {/* GRID-13 paste overflow note — shown when a pasted block had cells outside the
+          editable area (off the right edge or below the last displayed row). Dismissable. */}
+      {pasteNote && (
+        <div
+          data-slot="paste-note"
+          className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800"
+        >
+          <span>{pasteNote}</span>
+          <button
+            onClick={() => setPasteNote(null)}
+            className="ml-4 rounded border border-amber-400 px-3 py-1 text-xs font-medium hover:bg-amber-100"
+            aria-label="Dismiss paste note"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Conflict row markers — surfaced via data-slot for e2e */}
       {conflictRows.map((r) => (
