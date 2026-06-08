@@ -8,11 +8,15 @@
  *   - Distributor and Status are independent facets.
  *   - SFID search is a dedicated input (matchesSfid — plan.sfid only, not quickFilter).
  *
- * The parent (ActualsGrid) owns the AG Grid external-filter callbacks; this component
- * only reports selection changes upward. Pure UI with no direct AG Grid dependency.
+ * CONTROLLED component (P3 refactor): the parent (ActualsGrid) owns the single
+ * source of truth for facet selections + SFID search. FilterBar renders that
+ * state and reports changes upward via onFacetChange/onSfidChange. This removes
+ * the duplicate copy that used to live here and lets OTHER affordances (e.g. the
+ * clickable "Pending" stat) drive the same filter state without desyncing the
+ * dropdowns. URL persistence (P2-5) is handled centrally by the parent.
  */
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   optionsFor,
   type FacetKey,
@@ -26,6 +30,10 @@ import { type UnitRow } from "@/lib/actuals/rows";
 
 export type FilterBarProps = {
   allRows: UnitRow[];
+  /** Controlled facet selections (owned by the parent). */
+  selected: FacetSelections;
+  /** Controlled SFID search string (owned by the parent). */
+  sfid: string;
   onFacetChange: (selections: FacetSelections) => void;
   onSfidChange: (search: string) => void;
 };
@@ -33,9 +41,6 @@ export type FilterBarProps = {
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
-
-/** Multi-value selection stored as Set<string> per facet for O(1) toggle. */
-type MultiState = Partial<Record<FacetKey, string[]>>;
 
 // The cascade order: region narrows state narrows district.
 // Distributor and status are independent.
@@ -51,14 +56,33 @@ const LABELS: Record<FacetKey, string> = {
   status: "Status",
 };
 
+/**
+ * Apply a facet change with cascade-clear: changing a geographic upstream
+ * (region/state) clears its now-invalid downstream selections. Returns the
+ * next full selection object (pure — the caller reports it upward).
+ */
+function applyFacetChange(
+  prev: FacetSelections,
+  facet: FacetKey,
+  vals: string[],
+): FacetSelections {
+  const next: FacetSelections = { ...prev, [facet]: vals };
+  if (facet === "region") {
+    next.state = [];
+    next.district = [];
+  } else if (facet === "state") {
+    next.district = [];
+  }
+  return next;
+}
+
 export default function FilterBar({
   allRows,
+  selected,
+  sfid,
   onFacetChange,
   onSfidChange,
 }: FilterBarProps) {
-  const [selected, setSelected] = useState<MultiState>({});
-  const [sfid, setSfid] = useState("");
-
   // Derive option lists with cascade narrowing.
   // Region options: no upstream.
   // State options: narrowed by region selection.
@@ -82,30 +106,7 @@ export default function FilterBar({
     };
   }, [allRows, selected.region, selected.state]);
 
-  function toggleValue(facet: FacetKey, value: string) {
-    setSelected((prev) => {
-      const current = prev[facet] ?? [];
-      const next = current.includes(value)
-        ? current.filter((v) => v !== value)
-        : [...current, value];
-
-      // When a geographic upstream changes, clear its downstream facets.
-      const nextState: MultiState = { ...prev, [facet]: next };
-      if (facet === "region") {
-        nextState.state = [];
-        nextState.district = [];
-      } else if (facet === "state") {
-        nextState.district = [];
-      }
-
-      onFacetChange(nextState as FacetSelections);
-      return nextState;
-    });
-  }
-
   function clearAll() {
-    setSelected({});
-    setSfid("");
     onFacetChange({});
     onSfidChange("");
   }
@@ -131,10 +132,7 @@ export default function FilterBar({
           type="text"
           data-slot="sfid-search"
           value={sfid}
-          onChange={(e) => {
-            setSfid(e.target.value);
-            onSfidChange(e.target.value);
-          }}
+          onChange={(e) => onSfidChange(e.target.value)}
           placeholder="Search SFID…"
           className="h-10 min-w-[180px] rounded-md border border-neutral-300 bg-white px-3 text-sm"
         />
@@ -171,22 +169,11 @@ export default function FilterBar({
                   data-slot={`filter-${facet}`}
                   value={sel}
                   onChange={(e) => {
-                    // HTML multiple <select> — read all selected options.
                     const newVals = Array.from(
                       e.target.selectedOptions,
                       (o) => o.value,
                     );
-                    setSelected((prev) => {
-                      const nextState: MultiState = { ...prev, [facet]: newVals };
-                      if (facet === "region") {
-                        nextState.state = [];
-                        nextState.district = [];
-                      } else if (facet === "state") {
-                        nextState.district = [];
-                      }
-                      onFacetChange(nextState as FacetSelections);
-                      return nextState;
-                    });
+                    onFacetChange(applyFacetChange(selected, facet, newVals));
                   }}
                   className="min-w-[120px] rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm"
                 >
@@ -198,19 +185,9 @@ export default function FilterBar({
                 </select>
                 {sel.length > 0 && (
                   <button
-                    onClick={() => {
-                      setSelected((prev) => {
-                        const nextState: MultiState = { ...prev, [facet]: [] };
-                        if (facet === "region") {
-                          nextState.state = [];
-                          nextState.district = [];
-                        } else if (facet === "state") {
-                          nextState.district = [];
-                        }
-                        onFacetChange(nextState as FacetSelections);
-                        return nextState;
-                      });
-                    }}
+                    onClick={() =>
+                      onFacetChange(applyFacetChange(selected, facet, []))
+                    }
                     className="text-left text-[11px] text-neutral-500 hover:text-neutral-900"
                   >
                     Clear ({sel.length})

@@ -13,6 +13,7 @@ import { describe, it, expect } from "vitest";
 import { buildColumnDefs } from "./colDefs";
 import type { ActivityConfig, FieldDef } from "../activities/types";
 import { getActivity } from "../activities/registry";
+import { STATUS_VALUES } from "../activities/status";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -26,6 +27,21 @@ function findColByKey(cols: ReturnType<typeof buildColumnDefs>, key: string) {
       // derived cols may use colId instead of field
       (c as { colId?: string }).colId === key,
   );
+}
+
+/**
+ * Resolve a ColDef's `editable`, which is now boolean OR a callback (P3
+ * lock-on-Done). Pass the row's fields to evaluate the callback form.
+ */
+function resolveEditable(
+  col: { editable?: unknown } | undefined,
+  fields: Record<string, unknown> = {},
+): boolean {
+  const e = col?.editable;
+  if (typeof e === "function") {
+    return Boolean((e as (p: unknown) => boolean)({ data: { fields } }));
+  }
+  return Boolean(e);
 }
 
 // ---------------------------------------------------------------------------
@@ -72,7 +88,7 @@ describe("buildColumnDefs — actual columns cellEditor mapping", () => {
     const col = cols.find((c) => c.field === "fields.gsbType");
     expect(col).toBeDefined();
     expect(col?.cellEditor).toBe("agTextCellEditor");
-    expect(col?.editable).toBe(true);
+    expect(resolveEditable(col)).toBe(true);
   });
 
   it("number kind → agNumberCellEditor", () => {
@@ -81,7 +97,7 @@ describe("buildColumnDefs — actual columns cellEditor mapping", () => {
     const col = cols.find((c) => c.field === "fields.length");
     expect(col).toBeDefined();
     expect(col?.cellEditor).toBe("agNumberCellEditor");
-    expect(col?.editable).toBe(true);
+    expect(resolveEditable(col)).toBe(true);
   });
 
   it("currency kind → agNumberCellEditor (₹ via formatter, not special editor)", () => {
@@ -128,7 +144,8 @@ describe("buildColumnDefs — actual columns cellEditor mapping", () => {
     const cfg = getActivity("in-shop")!;
     const cols = buildColumnDefs(cfg);
     const col = cols.find((c) => c.field === "fields.status");
-    expect(col?.cellEditorParams).toEqual({ values: ["Pending", "In Progress", "Done"] });
+    // P2-2: status vocabulary is now the shared STATUS_VALUES (incl. "Cancelled").
+    expect(col?.cellEditorParams).toEqual({ values: [...STATUS_VALUES] });
   });
 });
 
@@ -145,7 +162,7 @@ describe("buildColumnDefs — derived actual columns (computeFrom present)", () 
       (c) => c.field === "fields.totalSqft" || (c as { colId?: string }).colId === "totalSqft",
     );
     expect(totalSqftCol).toBeDefined();
-    expect(totalSqftCol?.editable).toBe(true);
+    expect(resolveEditable(totalSqftCol)).toBe(true);
   });
 
   it("derived column carries a valueGetter function", () => {
@@ -155,6 +172,27 @@ describe("buildColumnDefs — derived actual columns (computeFrom present)", () 
       (c) => c.field === "fields.totalSqft" || (c as { colId?: string }).colId === "totalSqft",
     );
     expect(typeof totalSqftCol?.valueGetter).toBe("function");
+  });
+
+  // P3: lock-on-Done — actual cells become read-only once the row is Done,
+  // EXCEPT the Status cell (the unlock path).
+  it("actual cells lock when status is Done; status cell stays editable", () => {
+    const cfg = getActivity("in-shop")!;
+    const cols = buildColumnDefs(cfg);
+    const lengthCol = cols.find((c) => c.field === "fields.length");
+    const totalSqftCol = cols.find(
+      (c) => c.field === "fields.totalSqft" || (c as { colId?: string }).colId === "totalSqft",
+    );
+    const statusCol = cols.find((c) => c.field === "fields.status");
+
+    // Non-Done row → everything editable.
+    expect(resolveEditable(lengthCol, { status: "Pending" })).toBe(true);
+    expect(resolveEditable(totalSqftCol, { status: "Pending" })).toBe(true);
+
+    // Done row → measurement + derived locked, status still editable.
+    expect(resolveEditable(lengthCol, { status: "Done" })).toBe(false);
+    expect(resolveEditable(totalSqftCol, { status: "Done" })).toBe(false);
+    expect(resolveEditable(statusCol, { status: "Done" })).toBe(true);
   });
 
   it("valueGetter returns computeDerived result when NOT overridden", () => {

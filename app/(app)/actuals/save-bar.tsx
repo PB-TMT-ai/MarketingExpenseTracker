@@ -14,7 +14,7 @@
  * as-is; the server recomputes derived totals and validates with Zod.
  */
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { saveExecutionsBatch, type SaveBatchState } from "@/lib/actions/executions";
 import { type UnitRow } from "@/lib/actuals/rows";
 
@@ -69,6 +69,13 @@ export default function SaveBar({
   // Track whether we've shown the "saved" flash.
   const [showSaved, setShowSaved] = useState(false);
 
+  // P2-4: form ref so the Ctrl/Cmd+S shortcut can submit the same action the
+  // Save button triggers (requestSubmit runs validation + the form action).
+  const formRef = useRef<HTMLFormElement>(null);
+
+  const dirtyCount = dirtyRows.length;
+  const conflictCount = "conflicts" in state ? state.conflicts.length : 0;
+
   // When the action completes, notify the parent and flash "saved" if clean.
   useEffect(() => {
     if (state === INITIAL_STATE) return;
@@ -81,8 +88,21 @@ export default function SaveBar({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
-  const dirtyCount = dirtyRows.length;
-  const conflictCount = "conflicts" in state ? state.conflicts.length : 0;
+  // P2-4: Ctrl/Cmd+S saves without reaching for the mouse — the reviewer's
+  // muscle-memory shortcut. Only fires when there's something to save and a
+  // save isn't already in flight; otherwise we let the browser keep its default.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+        if (dirtyCount > 0 && !pending) {
+          e.preventDefault();
+          formRef.current?.requestSubmit();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dirtyCount, pending]);
 
   if (dirtyCount === 0 && !showSaved && conflictCount === 0) {
     return null; // Hide bar when nothing is pending
@@ -126,11 +146,12 @@ export default function SaveBar({
         )}
       </div>
 
-      <form action={formAction}>
+      <form action={formAction} ref={formRef}>
         <button
           type="submit"
           data-slot="save-button"
           disabled={pending || dirtyCount === 0}
+          title="Save (Ctrl/⌘+S)"
           className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-40 hover:bg-neutral-800"
         >
           {pending ? "Saving…" : "Save"}
