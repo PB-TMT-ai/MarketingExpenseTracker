@@ -20,6 +20,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FacetKey } from "@/lib/actuals/filter";
 import type { DashboardFilters } from "@/lib/db/dashboard";
+import MultiSelectPopover from "@/app/(app)/multi-select-popover";
 
 // The dashboard facets: the geographic cascade + distributor. The Status facet from
 // FacetKey is intentionally OMITTED here (D-17 — the dashboard SHOWS status breakdowns, so
@@ -118,46 +119,14 @@ export default function DashboardFilterBar({
           {DASHBOARD_FACETS.map((facet) => {
             const opts = options[OPTION_KEY[facet]] ?? [];
             const sel = selectedFor(facet);
-            if (opts.length === 0) return null;
-
             return (
-              <div key={facet} className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-neutral-600">
-                  {LABELS[facet]}
-                  {sel.length > 0 && (
-                    <span className="ml-1 inline-flex items-center rounded-full bg-neutral-900 px-1.5 text-[10px] font-semibold text-white">
-                      {sel.length}
-                    </span>
-                  )}
-                </label>
-                <select
-                  multiple
-                  size={Math.min(opts.length + 1, 5)}
-                  data-slot={`dashboard-filter-${facet}`}
-                  value={sel}
-                  onChange={(e) =>
-                    setFacet(
-                      facet,
-                      Array.from(e.target.selectedOptions, (o) => o.value),
-                    )
-                  }
-                  className="min-w-[120px] rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm"
-                >
-                  {opts.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-                {sel.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setFacet(facet, [])}
-                    className="text-left text-[11px] text-neutral-500 hover:text-neutral-900"
-                  >
-                    Clear ({sel.length})
-                  </button>
-                )}
+              <div key={facet} data-slot={`dashboard-filter-${facet}`}>
+                <MultiSelectPopover
+                  label={LABELS[facet]}
+                  options={opts}
+                  selected={sel}
+                  onChange={(newVals) => setFacet(facet, newVals)}
+                />
               </div>
             );
           })}
