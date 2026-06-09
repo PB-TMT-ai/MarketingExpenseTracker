@@ -14,7 +14,10 @@ import { defineConfig } from "vitest/config";
  */
 export default defineConfig({
   test: {
-    include: ["lib/**/*.{test,spec}.{ts,tsx}"],
+    include: [
+      "lib/**/*.{test,spec}.{ts,tsx}",
+      "app/**/*.{test,spec}.{ts,tsx}",
+    ],
     exclude: ["node_modules/**", ".next/**", "e2e/**", "playwright/**"],
     env: {
       DATABASE_URL: process.env.DATABASE_URL ?? "memory://",
