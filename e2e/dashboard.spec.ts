@@ -161,8 +161,17 @@ test("DASH-04: selecting a Region narrows the planned-units stat and writes ?reg
   const baseline = firstNumber(baselineText);
   expect(baseline).toBe(16);
 
-  // Select North in the region multi-select.
-  await page.selectOption('[data-slot="dashboard-filter-region"]', "North");
+  // Select North via the MultiSelectPopover (DASH-04, slice 1 — replaced <select multiple>).
+  // The trigger button is the first <button> in the facet wrapper; the popover panel
+  // (role=listbox) then exposes a Region checkbox (aria-label="North") we tick.
+  const regionWrap = page.locator('[data-slot="dashboard-filter-region"]');
+  await regionWrap.locator("button").first().click();
+  // Use .click() not .check() — the controlled checkbox state isn't reflected by Playwright's
+  // .check() retry after the parent fires router.replace and the popover may re-render.
+  await regionWrap
+    .locator('[role="listbox"]')
+    .getByRole("checkbox", { name: "North" })
+    .click();
   await page.waitForURL(/[?&]region=North/, { timeout: 10_000 });
   await page.waitForLoadState("networkidle");
 
