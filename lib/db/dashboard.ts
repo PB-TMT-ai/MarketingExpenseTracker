@@ -92,6 +92,21 @@ export type ScopeTotals = {
   cancelledUnits: number;
   plannedCost: number;
   actualCost: number;
+  /**
+   * Counter / sq ft metrics for the two activities that track them:
+   * Counter Wall Painting ("counter-wall") and In-shop Branding ("in-shop").
+   * Other activities contribute 0 to these aggregates via a SQL FILTER clause.
+   *
+   * - plannedCounters: distinct plan_row count where activity in those two.
+   * - actualCounters: execution count where status='Done' AND its plan_row activity in those two.
+   * - plannedSqft: sum((fields->>'planSqft')::numeric) for plan_rows in those two activities.
+   *   In-shop's plan template does NOT carry sqft — so in practice this equals Counter Wall's sum.
+   * - actualSqft: sum(executions.total_sqft) where status='Done' AND plan_row activity in those two.
+   */
+  plannedCounters: number;
+  actualCounters: number;
+  plannedSqft: number;
+  actualSqft: number;
 };
 
 /** One row per `plan_rows.activity` in scope. Same numbers as ScopeTotals + activity. */
@@ -163,6 +178,10 @@ export async function aggregateScopeTotals(
       cancelledUnits: sql<string>`count(${executions.id}) filter (where ${executions.status} = 'Cancelled')::int`,
       plannedCost: sql<string>`coalesce(sum(${planRows.plannedCost}), 0)::text`,
       actualCost: sql<string>`coalesce(sum(${executions.totalCost}) filter (where ${executions.status} <> 'Cancelled' or ${executions.status} is null), 0)::text`,
+      plannedCounters: sql<string>`count(distinct ${planRows.id}) filter (where ${planRows.activity} in ('counter-wall','in-shop'))::int`,
+      actualCounters: sql<string>`count(${executions.id}) filter (where ${executions.status} = 'Done' and ${planRows.activity} in ('counter-wall','in-shop'))::int`,
+      plannedSqft: sql<string>`coalesce(sum((${planRows.fields}->>'planSqft')::numeric) filter (where ${planRows.activity} in ('counter-wall','in-shop')), 0)::text`,
+      actualSqft: sql<string>`coalesce(sum(${executions.totalSqft}) filter (where ${executions.status} = 'Done' and ${planRows.activity} in ('counter-wall','in-shop')), 0)::text`,
     })
     .from(planRows)
     .leftJoin(executions, eq(executions.planRowId, planRows.id))
@@ -177,6 +196,10 @@ export async function aggregateScopeTotals(
     cancelledUnits: Number(r?.cancelledUnits ?? 0),
     plannedCost: Number(r?.plannedCost ?? 0),
     actualCost: Number(r?.actualCost ?? 0),
+    plannedCounters: Number(r?.plannedCounters ?? 0),
+    actualCounters: Number(r?.actualCounters ?? 0),
+    plannedSqft: Number(r?.plannedSqft ?? 0),
+    actualSqft: Number(r?.actualSqft ?? 0),
   };
 }
 
@@ -202,6 +225,10 @@ export async function aggregateByActivity(
       cancelledUnits: sql<string>`count(${executions.id}) filter (where ${executions.status} = 'Cancelled')::int`,
       plannedCost: sql<string>`coalesce(sum(${planRows.plannedCost}), 0)::text`,
       actualCost: sql<string>`coalesce(sum(${executions.totalCost}) filter (where ${executions.status} <> 'Cancelled' or ${executions.status} is null), 0)::text`,
+      plannedCounters: sql<string>`count(distinct ${planRows.id}) filter (where ${planRows.activity} in ('counter-wall','in-shop'))::int`,
+      actualCounters: sql<string>`count(${executions.id}) filter (where ${executions.status} = 'Done' and ${planRows.activity} in ('counter-wall','in-shop'))::int`,
+      plannedSqft: sql<string>`coalesce(sum((${planRows.fields}->>'planSqft')::numeric) filter (where ${planRows.activity} in ('counter-wall','in-shop')), 0)::text`,
+      actualSqft: sql<string>`coalesce(sum(${executions.totalSqft}) filter (where ${executions.status} = 'Done' and ${planRows.activity} in ('counter-wall','in-shop')), 0)::text`,
     })
     .from(planRows)
     .leftJoin(executions, eq(executions.planRowId, planRows.id))
@@ -218,6 +245,10 @@ export async function aggregateByActivity(
     cancelledUnits: Number(r.cancelledUnits ?? 0),
     plannedCost: Number(r.plannedCost ?? 0),
     actualCost: Number(r.actualCost ?? 0),
+    plannedCounters: Number(r.plannedCounters ?? 0),
+    actualCounters: Number(r.actualCounters ?? 0),
+    plannedSqft: Number(r.plannedSqft ?? 0),
+    actualSqft: Number(r.actualSqft ?? 0),
   }));
 }
 
@@ -242,6 +273,10 @@ export async function aggregateByRegion(
       cancelledUnits: sql<string>`count(${executions.id}) filter (where ${executions.status} = 'Cancelled')::int`,
       plannedCost: sql<string>`coalesce(sum(${planRows.plannedCost}), 0)::text`,
       actualCost: sql<string>`coalesce(sum(${executions.totalCost}) filter (where ${executions.status} <> 'Cancelled' or ${executions.status} is null), 0)::text`,
+      plannedCounters: sql<string>`count(distinct ${planRows.id}) filter (where ${planRows.activity} in ('counter-wall','in-shop'))::int`,
+      actualCounters: sql<string>`count(${executions.id}) filter (where ${executions.status} = 'Done' and ${planRows.activity} in ('counter-wall','in-shop'))::int`,
+      plannedSqft: sql<string>`coalesce(sum((${planRows.fields}->>'planSqft')::numeric) filter (where ${planRows.activity} in ('counter-wall','in-shop')), 0)::text`,
+      actualSqft: sql<string>`coalesce(sum(${executions.totalSqft}) filter (where ${executions.status} = 'Done' and ${planRows.activity} in ('counter-wall','in-shop')), 0)::text`,
     })
     .from(planRows)
     .leftJoin(executions, eq(executions.planRowId, planRows.id))
@@ -258,6 +293,10 @@ export async function aggregateByRegion(
     cancelledUnits: Number(r.cancelledUnits ?? 0),
     plannedCost: Number(r.plannedCost ?? 0),
     actualCost: Number(r.actualCost ?? 0),
+    plannedCounters: Number(r.plannedCounters ?? 0),
+    actualCounters: Number(r.actualCounters ?? 0),
+    plannedSqft: Number(r.plannedSqft ?? 0),
+    actualSqft: Number(r.actualSqft ?? 0),
   }));
 }
 
