@@ -119,6 +119,7 @@ export default function SaveBar({
         data-slot="save-button"
         onClick={onSave}
         disabled={pending || dirtyCount === 0}
+        title="Save (Ctrl/⌘+S)"
         className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-40 hover:bg-neutral-800"
       >
         {pending ? "Saving…" : "Save"}

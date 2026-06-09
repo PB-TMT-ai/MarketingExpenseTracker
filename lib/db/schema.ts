@@ -102,6 +102,18 @@ export const planRows = pgTable(
   ],
 );
 
+/**
+ * One entry in `executions.overrides_log` (P1-1 — override audit).
+ * Captured server-side at save time whenever a derived field is overridden;
+ * the reviewer can later justify a number with `executions.notes`.
+ */
+export type OverrideLogEntry = {
+  field: string;
+  fromValue: unknown;
+  toValue: unknown;
+  at: string; // ISO timestamp from `new Date().toISOString()`
+};
+
 export const executions = pgTable(
   "executions",
   {
@@ -117,6 +129,15 @@ export const executions = pgTable(
     totalCost: numeric("total_cost", { precision: 14, scale: 2 }),
     totalSqft: numeric("total_sqft", { precision: 14, scale: 2 }),
     fields: jsonb("fields").notNull().default({}), // measurements / lat-long
+    // P1-1: free-text justification a reviewer can attach to an execution.
+    // Surfaced when any derived field is overridden so the audit trail can
+    // answer "why ₹50k → ₹75k?". Nullable; no length cap at the DB.
+    notes: text("notes"),
+    // P1-1: append-only log of derived-field overrides applied at save time.
+    // Each entry: { field, fromValue, toValue, at }. Nullable so unaffected
+    // rows stay tidy. The action builds this server-side; the client never
+    // writes here directly.
+    overridesLog: jsonb("overrides_log").$type<OverrideLogEntry[]>(),
     version: integer("version").notNull().default(0), // D-04 per-unit optimistic concurrency
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

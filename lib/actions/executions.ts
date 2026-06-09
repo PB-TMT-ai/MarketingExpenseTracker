@@ -6,11 +6,16 @@ import { z } from "zod";
 import { SESSION_COOKIE, verifySession } from "../auth/session";
 import { db } from "../db";
 import { computeDerived, isOverridden } from "../actuals/calc";
+import { inArray } from "drizzle-orm";
+import { executions as executionsTable } from "../db/schema";
 import {
   insertExecution,
   updateExecutionVersioned,
   savePopKit,
+  getExecutionById,
+  listKitLines,
   type PopLine,
+  type OverrideLogEntry,
 } from "../db/executions";
 import { insertExceptionPlanRow } from "../db/plan-rows";
 
@@ -161,43 +166,75 @@ function applyServerCalc(
 }
 
 // ---------------------------------------------------------------------------
-// Numeric-column promotion (shared by saveExecutionsBatch + addOffPlanExecution)
+// Override audit log capture (P1-1)
+//
+// For each derived field where the user set __overrides[K] = true, emit a log
+// entry capturing the natural formula value (what the formula would compute
+// WITHOUT this specific override) vs the value being saved. This gives the
+// reviewer an auditable receipt: "the formula said X; I saved Y." Soft cap
+// at 50 entries so a misbehaving client cannot bloat the row.
 // ---------------------------------------------------------------------------
 
+const OVERRIDE_LOG_CAP = 50;
+
+function computeOverrideEntries(
+  activityKey: string,
+  fields: Record<string, unknown>,
+): OverrideLogEntry[] {
+  const entries: OverrideLogEntry[] = [];
+  const at = new Date().toISOString();
+  for (const key of DERIVED_KEYS) {
+    if (!isOverridden(fields, key)) continue;
+    const userVal = fields[key];
+    if (userVal == null || userVal === "") continue;
+
+    // Clone fields and strip THIS specific override so computeDerived returns
+    // the formula's natural answer. Other overrides (e.g. on totalSqft when
+    // we're computing totalCost) intentionally remain — that mirrors what
+    // would actually be persisted if the user un-checked just this override.
+    const fieldsNoOverride: Record<string, unknown> = { ...fields };
+    const overrides = {
+      ...((fields["__overrides"] as Record<string, unknown> | undefined) ?? {}),
+    };
+    delete overrides[key];
+    fieldsNoOverride["__overrides"] = overrides;
+
+    const naturalVal = computeDerived(activityKey, key, fieldsNoOverride);
+    if (naturalVal == null) continue;
+
+    // Cast to numbers for comparison — userVal may be string from grid input,
+    // naturalVal is number from computeDerived.
+    const userNum = Number(userVal);
+    if (!Number.isFinite(userNum)) continue;
+    if (Math.abs(userNum - naturalVal) < 0.005) continue; // matches 2-dp rounding
+
+    entries.push({
+      field: key,
+      fromValue: naturalVal,
+      toValue: userNum,
+      at,
+    });
+  }
+  return entries;
+}
+
 /**
- * Split a server-recomputed `fields` blob into the promoted numeric/status columns and
- * the remaining jsonb tail, EXACTLY as saveExecutionsBatch does (lines 251-268). Kept as
- * one helper so the off-plan-exception path and the batch path can never drift apart
- * (Pitfall 9 — one authoritative calc path).
- *
- * totalSqft/totalCost/perUnitCost → String(...) | null (numeric(14,2) boundary).
- * status/unitNo → string | null. The returned `jsonbFields` excludes all five promoted
- * keys so they are not duplicated in both the column and the jsonb blob.
+ * Merge prior log + new entries, soft-capping at OVERRIDE_LOG_CAP by trimming
+ * the oldest entries from the front. Returns null when there are no entries
+ * at all (keeps the column clean for un-overridden rows).
  */
-function promoteExecutionColumns(serverFields: Record<string, unknown>): {
-  status: string | null;
-  unitNo: string | null;
-  perUnitCost: string | null;
-  totalCost: string | null;
-  totalSqft: string | null;
-  jsonbFields: Record<string, unknown>;
-} {
-  const totalSqft =
-    serverFields["totalSqft"] != null ? String(serverFields["totalSqft"]) : null;
-  const totalCost =
-    serverFields["totalCost"] != null ? String(serverFields["totalCost"]) : null;
-  const perUnitCost =
-    serverFields["perUnitCost"] != null ? String(serverFields["perUnitCost"]) : null;
-  const status =
-    typeof serverFields["status"] === "string" ? serverFields["status"] : null;
-  const unitNo =
-    typeof serverFields["unitNo"] === "string" ? serverFields["unitNo"] : null;
-
-  const { totalSqft: _ts, totalCost: _tc, perUnitCost: _pu, status: _st, unitNo: _un, ...jsonbFields } =
-    serverFields;
-  void _ts; void _tc; void _pu; void _st; void _un;
-
-  return { status, unitNo, perUnitCost, totalCost, totalSqft, jsonbFields };
+function mergeOverrideLog(
+  prior: OverrideLogEntry[] | null | undefined,
+  added: OverrideLogEntry[],
+): OverrideLogEntry[] | null {
+  if (added.length === 0 && (prior == null || prior.length === 0)) {
+    return null;
+  }
+  const merged = [...(prior ?? []), ...added];
+  if (merged.length > OVERRIDE_LOG_CAP) {
+    return merged.slice(merged.length - OVERRIDE_LOG_CAP);
+  }
+  return merged;
 }
 
 // ---------------------------------------------------------------------------
@@ -278,6 +315,26 @@ export async function saveExecutionsBatch(
   const savedIds: SavedUnit[] = [];
   const conflicts: number[] = [];
 
+  // P1-1: one batch SELECT to pull prior override logs for all existing units
+  // in this batch. Avoids N+1 reads inside the transaction. New placeholders
+  // (executionId === null) start with an empty prior log.
+  const existingIds = units
+    .map((u) => u.executionId)
+    .filter((id): id is number => id != null);
+  const priorLogById = new Map<number, OverrideLogEntry[] | null>();
+  if (existingIds.length > 0) {
+    const priorRows = await db
+      .select({
+        id: executionsTable.id,
+        overridesLog: executionsTable.overridesLog,
+      })
+      .from(executionsTable)
+      .where(inArray(executionsTable.id, existingIds));
+    for (const r of priorRows) {
+      priorLogById.set(Number(r.id), r.overridesLog ?? null);
+    }
+  }
+
   try {
     await db.transaction(async (tx) => {
       for (const unit of units) {
@@ -289,13 +346,58 @@ export async function saveExecutionsBatch(
         // server's authoritative computation (Pitfall 9 / D3-05).
         const serverFields = applyServerCalc(activity, unit.fields);
 
-        // Extract the promoted numeric/status columns + the jsonb tail. Shared helper so
-        // the off-plan-exception path (addOffPlanExecution) uses the IDENTICAL split.
-        const { status, unitNo, perUnitCost, totalCost, totalSqft, jsonbFields } =
-          promoteExecutionColumns(serverFields);
+        // Extract the top-level numeric columns from the recomputed fields.
+        // These are promoted to real numeric(14,2) columns on the row.
+        const totalSqft =
+          serverFields["totalSqft"] != null ? String(serverFields["totalSqft"]) : null;
+        const totalCost =
+          serverFields["totalCost"] != null ? String(serverFields["totalCost"]) : null;
+        const perUnitCost =
+          serverFields["perUnitCost"] != null ? String(serverFields["perUnitCost"]) : null;
+        const status =
+          typeof serverFields["status"] === "string" ? serverFields["status"] : null;
+        const unitNo =
+          typeof serverFields["unitNo"] === "string" ? serverFields["unitNo"] : null;
+        // P1-1: pull notes out of the fields blob. Trim and treat empty as null
+        // so a blank textarea doesn't persist whitespace.
+        const notesRaw =
+          typeof serverFields["notes"] === "string" ? serverFields["notes"].trim() : null;
+        const notes = notesRaw && notesRaw.length > 0 ? notesRaw : null;
+
+        // P1-1: capture override entries for this save and merge with prior log.
+        // Read-only on the client; the action is the only writer.
+        const newOverrideEntries = computeOverrideEntries(activity, serverFields);
+        const priorLog = unit.executionId != null ? priorLogById.get(unit.executionId) : null;
+        const mergedLog = mergeOverrideLog(priorLog, newOverrideEntries);
+
+        // The jsonb fields blob persisted to `executions.fields` (measurements, lat/long, etc.)
+        // Excludes the promoted numeric columns and notes so they aren't duplicated.
+        // Also strips the read-only __overridesLog client mirror — the column is authoritative.
+        const {
+          totalSqft: _ts,
+          totalCost: _tc,
+          perUnitCost: _pu,
+          status: _st,
+          unitNo: _un,
+          notes: _no,
+          __overridesLog: _ol,
+          ...jsonbFields
+        } = serverFields;
+        void _ts; void _tc; void _pu; void _st; void _un; void _no; void _ol;
 
         if (unit.popLines != null) {
           // (5a) POP kit: one execution + N execution_items atomically (D3-13/14).
+          //
+          // P1-5 guard: a brand-new kit (executionId === null) with zero valid
+          // lines is meaningless — it would persist as a ₹0 "Done" kit with no
+          // items, which pollutes the % executed metric. Skip the insert.
+          //
+          // Existing kits CAN be saved with zero lines: that's the user
+          // explicitly emptying a kit they had previously filled (replace-all
+          // semantics in savePopKit handle the delete). We keep that path.
+          if (unit.executionId == null && unit.popLines.length === 0) {
+            continue;
+          }
           const lines: PopLine[] = unit.popLines.map((l) => ({
             itemName: l.itemName,
             qty: l.qty,
@@ -315,6 +417,8 @@ export async function saveExecutionsBatch(
             perUnitCost,
             totalCost,
             totalSqft,
+            notes,
+            overridesLog: mergedLog,
           });
           savedIds.push({ rowKey: unit.rowKey, id: newId, version: 0 });
         } else {
@@ -332,6 +436,8 @@ export async function saveExecutionsBatch(
               perUnitCost,
               totalCost,
               totalSqft,
+              notes,
+              overridesLog: mergedLog,
             },
           );
           if (ok) {
@@ -366,6 +472,134 @@ export async function saveExecutionsBatch(
 }
 
 // ---------------------------------------------------------------------------
+// fetchExecutionForRow — single-row conflict re-fetch (P1-2)
+//
+// When saveExecutionsBatch returns a conflict for an executionId, the grid needs
+// the row's FRESH server state so the user can re-apply their edits on top of
+// the latest values. Previously the grid called window.location.reload() — which
+// nuked every other unsaved edit in the batch. This action returns just the one
+// row, so the rest of the dirty state stays intact.
+//
+// Returns merged fields (jsonb + promoted numeric columns) in the same shape
+// buildRowModel produces, so the client can do a direct row-patch.
+// ---------------------------------------------------------------------------
+
+const fetchExecutionInputSchema = z.object({
+  executionId: z.number().int().positive(),
+  withKitLines: z.boolean().optional(),
+});
+
+export type FetchExecutionState =
+  | {
+      ok: true;
+      executionId: number;
+      planRowId: number;
+      version: number;
+      fields: Record<string, unknown>;
+      popLines?: Array<{
+        itemName: string;
+        qty: number;
+        rate: number;
+        lineTotal: number;
+      }>;
+    }
+  | { ok: false; error: string };
+
+export async function fetchExecutionForRow(
+  input: unknown,
+): Promise<FetchExecutionState> {
+  // Auth boundary first — same posture as saveExecutionsBatch (CVE-2025-29927).
+  await requireSession();
+
+  const parsed = fetchExecutionInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "Invalid input",
+    };
+  }
+
+  const { executionId, withKitLines } = parsed.data;
+
+  const exec = await getExecutionById(executionId);
+  if (!exec) {
+    // Row was deleted server-side between the conflict and the reload.
+    return { ok: false, error: "Execution not found" };
+  }
+
+  // Merge jsonb fields + promoted numeric columns, mirroring buildRowModel.
+  const mergedFields: Record<string, unknown> = { ...exec.fields };
+  if (exec.totalSqft != null) mergedFields["totalSqft"] = exec.totalSqft;
+  if (exec.totalCost != null) mergedFields["totalCost"] = exec.totalCost;
+  if (exec.perUnitCost != null) mergedFields["perUnitCost"] = exec.perUnitCost;
+  if (exec.status != null) mergedFields["status"] = exec.status;
+  if (exec.unitNo != null) mergedFields["unitNo"] = exec.unitNo;
+  if (exec.notes != null) mergedFields["notes"] = exec.notes;
+  if (exec.overridesLog != null) {
+    mergedFields["__overridesLog"] = exec.overridesLog;
+  }
+
+  const result: FetchExecutionState = {
+    ok: true,
+    executionId: exec.id,
+    planRowId: exec.planRowId,
+    version: exec.version,
+    fields: mergedFields,
+  };
+
+  if (withKitLines) {
+    const lines = await listKitLines([executionId]);
+    result.popLines = lines.map((l) => ({
+      itemName: l.itemName,
+      qty: Number(l.qty),
+      rate: Number(l.rate),
+      lineTotal: Number(l.lineTotal),
+    }));
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Numeric-column promotion (used by addOffPlanExecution)
+// ---------------------------------------------------------------------------
+
+/**
+ * Split a server-recomputed `fields` blob into the promoted numeric/status columns and
+ * the remaining jsonb tail, the SAME split saveExecutionsBatch performs inline. Used by
+ * the off-plan-exception path so it can never drift from the batch path (Pitfall 9).
+ *
+ * totalSqft/totalCost/perUnitCost → String(...) | null (numeric(14,2) boundary).
+ * status/unitNo → string | null. The returned `jsonbFields` excludes all five promoted
+ * keys so they are not duplicated in both the column and the jsonb blob.
+ */
+function promoteExecutionColumns(serverFields: Record<string, unknown>): {
+  status: string | null;
+  unitNo: string | null;
+  perUnitCost: string | null;
+  totalCost: string | null;
+  totalSqft: string | null;
+  jsonbFields: Record<string, unknown>;
+} {
+  const totalSqft =
+    serverFields["totalSqft"] != null ? String(serverFields["totalSqft"]) : null;
+  const totalCost =
+    serverFields["totalCost"] != null ? String(serverFields["totalCost"]) : null;
+  const perUnitCost =
+    serverFields["perUnitCost"] != null ? String(serverFields["perUnitCost"]) : null;
+  const status =
+    typeof serverFields["status"] === "string" ? serverFields["status"] : null;
+  const unitNo =
+    typeof serverFields["unitNo"] === "string" ? serverFields["unitNo"] : null;
+
+  const { totalSqft: _ts, totalCost: _tc, perUnitCost: _pu, status: _st, unitNo: _un, ...jsonbFields } =
+    serverFields;
+  void _ts; void _tc; void _pu; void _st; void _un;
+
+  return { status, unitNo, perUnitCost, totalCost, totalSqft, jsonbFields };
+}
+
+// ---------------------------------------------------------------------------
 // addOffPlanExecution — COMP-04 off-plan-exception Server Action (Phase 3.1)
 // ---------------------------------------------------------------------------
 
@@ -375,12 +609,11 @@ export async function saveExecutionsBatch(
  * (period, activity) raises 23505 and the transaction rolls back.
  *
  * SIBLING of isFkRestrictError in lib/actions/plans.ts — that helper EXPLICITLY does NOT
- * cover 23505 (its comment routes the unique-violation to "a different handling path").
- * This is that path: catch it, return a clean {ok:false} message, NEVER a 500 (R3).
+ * cover 23505. This is that path: catch it, return a clean {ok:false} message, NEVER a 500.
  *
  * Duck-typed on `err.cause?.code ?? err.code` for cross-driver compat (PGlite obfuscates
  * its DatabaseError class so `instanceof` is unreliable; postgres-js exposes the SQLSTATE
- * at err.cause.code). Same shape as isFkRestrictError.
+ * at err.cause.code).
  */
 function isUniqueViolation(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
@@ -394,11 +627,10 @@ function isUniqueViolation(err: unknown): boolean {
 /**
  * Input schema for addOffPlanExecution.
  *
- * `sfid` IS accepted here (unlike saveExecutionsBatch, which forbids it) BECAUSE the whole
- * point of the off-plan-exception path is to introduce a NEW plan_row — but the sfid is
- * written ONLY to plan_rows.sfid, NEVER to executions (which has no sfid column). The
- * structural off-plan guard (COMP-01) is preserved: the execution still FKs to a real
- * plan_row id.
+ * `sfid` IS accepted here (unlike saveExecutionsBatch) BECAUSE the whole point is to
+ * introduce a NEW plan_row — but the sfid is written ONLY to plan_rows.sfid, NEVER to
+ * executions (which has no sfid column). The structural off-plan guard (COMP-01) is
+ * preserved: the execution still FKs to a real plan_row id.
  *
  * `exceptionReason` is REQUIRED (min 1) — an off-plan exception must be audited (D3.1-08).
  */
@@ -429,27 +661,16 @@ export type AddOffPlanState =
 /**
  * addOffPlanExecution — record a deliberate, audited off-plan-exception execution.
  *
- * Mirrors commitPlanUpload / saveExecutionsBatch structure exactly:
- *   1. requireSession() FIRST — the auth boundary (CVE-2025-29927; ASVS V2). Throws
- *      Unauthorized before ANY DB touch.
- *   2. Zod safeParse — never trust the client. `exceptionReason` is required (min 1).
- *   3. ONE db.transaction:
- *        a. insertExceptionPlanRow(tx, ...) — the NEW plan_row (source='exception'),
- *           returns its id. This is the FIRST insert; if the SFID already exists it
- *           raises 23505 here and the whole tx rolls back.
- *        b. applyServerCalc(activity, fields) — server trust-recompute of non-overridden
- *           derived totals (R12 / D3-05 / Pitfall 9). Client totals are NOT trusted.
- *        c. insertExecution(tx, { planRowId, ... }) — the execution FK'd to the new
- *           plan_row. The SECOND insert; if it fails, (a) rolls back too (atomicity).
- *   4. revalidatePath("/actuals").
- *   5. Return { ok:true, planRowId, executionId }.
+ * 1. requireSession() FIRST — auth boundary (CVE-2025-29927). Throws before any DB touch.
+ * 2. Zod safeParse — never trust the client. `exceptionReason` required (min 1).
+ * 3. ONE db.transaction: insert the exception plan_row (source='exception') FIRST — a dupe
+ *    SFID raises 23505 here and the whole tx rolls back — then applyServerCalc trust-recompute,
+ *    then insert the execution FK'd to the new plan_row (atomic: both or neither).
+ * 4. revalidatePath("/actuals"); return ids.
  *
- * The try/catch is AROUND db.transaction(...), NEVER inside the callback — the throw is
- * HOW Drizzle rolls back. A 23505 unique-violation is caught and returned as a clean
- * {ok:false} message (R3 — never a 500); any other error propagates.
- *
- * Off-plan guard (COMP-01) intact: executions has no sfid column; the only write of the
- * sfid is to the new plan_rows row, and the execution attaches via the NOT NULL FK.
+ * try/catch is AROUND db.transaction, NEVER inside (the throw is HOW Drizzle rolls back).
+ * 23505 is caught → clean {ok:false} (R3, never a 500); any other error propagates.
+ * Off-plan guard (COMP-01) intact: executions has no sfid; sfid is written only to plan_rows.
  */
 export async function addOffPlanExecution(
   input: unknown,

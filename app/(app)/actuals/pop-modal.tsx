@@ -65,6 +65,21 @@ export default function PopModal({
     [lines],
   );
 
+  // P1-5: count valid lines (item picked, qty > 0). Mirrors handleConfirm's
+  // filter so the Done button's disabled state matches what will actually save.
+  const validCount = useMemo(
+    () =>
+      lines.filter(
+        (d) => d.itemName.trim() !== "" && Number(d.qty) > 0,
+      ).length,
+    [lines],
+  );
+
+  // A NEW kit (no initialLines) with zero valid lines is meaningless — block
+  // Done. An EXISTING kit can be emptied deliberately (replace-all semantics
+  // on the server handle the line delete), so we don't block that path.
+  const isNewEmptyKit = initialLines.length === 0 && validCount === 0;
+
   function updateLine(i: number, patch: Partial<DraftLine>) {
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   }
@@ -206,7 +221,13 @@ export default function PopModal({
           <button
             data-slot="pop-confirm"
             onClick={handleConfirm}
-            className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-neutral-800"
+            disabled={isNewEmptyKit}
+            title={
+              isNewEmptyKit
+                ? "Add at least one item with a quantity before saving the kit"
+                : undefined
+            }
+            className="rounded-md bg-neutral-900 px-4 py-1.5 text-sm font-medium text-white transition-opacity hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Done
           </button>

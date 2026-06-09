@@ -1,6 +1,6 @@
 {
-  "id": "af3b982a-0b8e-40fe-8bfa-d57f2bab0a71",
-  "prevId": "699b7a15-426a-4eef-be40-af1b6710302c",
+  "id": "bc709d3b-9fcd-43ef-88bb-cbe8d672823f",
+  "prevId": "af3b982a-0b8e-40fe-8bfa-d57f2bab0a71",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -374,6 +374,32 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'{}'::jsonb"
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'plan-upload'"
+        },
+        "exception_reason": {
+          "name": "exception_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_via": {
+          "name": "created_via",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
         }
       },
       "indexes": {
@@ -445,7 +471,12 @@
         }
       },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "plan_rows_source_check": {
+          "name": "plan_rows_source_check",
+          "value": "\"plan_rows\".\"source\" in ('plan-upload', 'exception')"
+        }
+      },
       "isRLSEnabled": false
     }
   },

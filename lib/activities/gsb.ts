@@ -1,4 +1,5 @@
 import type { ActivityConfig, FieldDef } from "./types";
+import { STATUS_VALUES } from "./status";
 
 /**
  * GSB — type `measurement`. Shares its column shape with NLB (sibling file `nlb.ts`),
@@ -16,16 +17,22 @@ const planColumns: readonly FieldDef[] = [
 ];
 
 const actualColumns: readonly FieldDef[] = [
-  { key: "status", label: "Status", kind: "status", enumValues: ["Pending", "In Progress", "Done"] },
+  { key: "status", label: "Status", kind: "status", enumValues: STATUS_VALUES },
   { key: "gsbType", label: "GSB type", kind: "text" },
   { key: "length", label: "Length", kind: "number" },
   { key: "breadth", label: "Breadth", kind: "number" },
-  { key: "height", label: "Height", kind: "number" },
+  // P1-4: Height is captured for reference only — it is NOT a factor in the
+  // area formula (Total Sq Ft = Length × Breadth, D3-04). The "(ref)" label
+  // makes that explicit so a reviewer doesn't enter height expecting the area
+  // to change, then "fix" it with a spurious override.
+  { key: "height", label: "Height (ref)", kind: "number" },
   {
     key: "totalSqft",
     label: "Total Sq Ft",
     kind: "number",
-    computeFrom: ["length", "breadth", "height"],
+    // P1-4: height removed from computeFrom — it never fed the formula; listing
+    // it here implied a dependency that does not exist.
+    computeFrom: ["length", "breadth"],
   },
   { key: "perUnitCost", label: "Per-unit cost", kind: "currency" },
   {

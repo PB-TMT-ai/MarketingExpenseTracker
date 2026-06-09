@@ -38,6 +38,33 @@ const EDITOR_BY_KIND: Record<FieldDef["kind"], string> = {
 };
 
 /**
+ * P2-6: format a stored ISO date (YYYY-MM-DD) as DD/MM/YY for display — the
+ * Indian convention this app targets (CLAUDE.md). The value stays ISO on disk
+ * and in the editor (agDateStringCellEditor's native <input type="date">);
+ * only the resting cell display changes. Non-ISO or empty values pass through
+ * untouched so we never hide a value we can't parse.
+ */
+export function formatDateDDMMYY(value: unknown): string {
+  if (value == null || value === "") return "";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
+  if (!m) return String(value);
+  const [, yyyy, mm, dd] = m;
+  return `${dd}/${mm}/${yyyy.slice(2)}`;
+}
+
+/**
+ * P3: lock a settled row from accidental edits. A row whose status is "Done"
+ * is read-only EXCEPT for its Status cell — so the reviewer's unlock path is
+ * simply "change the status away from Done", no custom shift-click needed.
+ * Returns true (editable) for any non-Done row.
+ */
+function editableUnlessDone(p: {
+  data?: { fields?: Record<string, unknown> };
+}): boolean {
+  return p.data?.fields?.["status"] !== "Done";
+}
+
+/**
  * Per-kind minimum column width (px). Text-kind columns (dealer/area, distributor,
  * SFID) tend to carry long human-readable values and were getting truncated to
  * 'ACME Coun…' at desktop width (F-028). Numeric/date/coord columns stay narrower
@@ -79,6 +106,8 @@ export function buildColumnDefs(cfg: ActivityConfig): ColDef[] {
     editable: false,
     cellClass: "ag-cell-plan",
     minWidth: MIN_WIDTH_BY_KIND[f.kind],
+    // P2-6: render any plan-side date in DD/MM/YY.
+    ...(f.kind === "date" ? { valueFormatter: (p: { value: unknown }) => formatDateDDMMYY(p.value) } : {}),
   }));
 
   // Actual columns: editable, dotted fields.* path, cellEditor per kind
@@ -98,7 +127,8 @@ export function buildColumnDefs(cfg: ActivityConfig): ColDef[] {
         headerName: f.label,
         field: `fields.${key}`,
         colId: key,
-        editable: true, // overridable
+        // Overridable (D3-05), but P3-locked once the row is Done.
+        editable: editableUnlessDone,
         cellEditor: editor,
         cellEditorParams: editorParams,
         minWidth: MIN_WIDTH_BY_KIND[f.kind],
@@ -119,14 +149,21 @@ export function buildColumnDefs(cfg: ActivityConfig): ColDef[] {
       };
     }
 
-    // Non-derived actual column
+    // Non-derived actual column.
+    // P3: the Status cell is ALWAYS editable (it's the unlock path); every other
+    // actual cell locks once the row is Done.
+    const editable = f.key === "status" ? true : editableUnlessDone;
     return {
       headerName: f.label,
       field: `fields.${f.key}`,
-      editable: true,
+      editable,
       cellEditor: editor,
       cellEditorParams: editorParams,
       minWidth: MIN_WIDTH_BY_KIND[f.kind],
+      // P2-6: display dates as DD/MM/YY; stored/edited value stays ISO.
+      ...(f.kind === "date"
+        ? { valueFormatter: (p: { value: unknown }) => formatDateDDMMYY(p.value) }
+        : {}),
     };
   });
 

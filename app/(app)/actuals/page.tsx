@@ -9,7 +9,23 @@ import { listItems } from "@/lib/db/items";
 import { buildRowModel, type PopLineInput } from "@/lib/actuals/rows";
 import { ACTIVITIES, ACTIVITY_KEYS } from "@/lib/activities/registry";
 import type { ActivityKey } from "@/lib/activities/types";
+import type { FacetSelections } from "@/lib/actuals/filter";
 import ActualsGrid from "./actuals-grid";
+import ActivitySwitcher from "./activity-switcher";
+
+/**
+ * Read a (possibly repeated) filter param into a string[] (P2-5).
+ * Next gives `string | string[] | undefined`; multi-select facets are encoded
+ * as repeated params (?region=North&region=South).
+ */
+function readFacetParam(
+  params: Record<string, string | string[] | undefined>,
+  key: string,
+): string[] {
+  const v = params[key];
+  if (v == null) return [];
+  return (Array.isArray(v) ? v : [v]).filter((s) => s.trim() !== "");
+}
 
 export const dynamic = "force-dynamic";
 
@@ -99,6 +115,18 @@ export default async function ActualsPage({
   // Active items for the POP modal picker (ACTIVE only; itemName is snapshotted at entry).
   const activeItems = allItems.filter((i) => i.active);
 
+  // P2-5: initial filter selections from the URL so a shared/reloaded link lands
+  // pre-filtered, and so filters carried across an activity switch re-apply.
+  const initialFacets: FacetSelections = {
+    region: readFacetParam(resolvedParams, "region"),
+    state: readFacetParam(resolvedParams, "state"),
+    district: readFacetParam(resolvedParams, "district"),
+    distributor: readFacetParam(resolvedParams, "distributor"),
+    status: readFacetParam(resolvedParams, "status"),
+  };
+  const rawSfid = resolvedParams.sfid;
+  const initialSfid = typeof rawSfid === "string" ? rawSfid : "";
+
   return (
     <div data-slot="actuals-page" className="mx-auto max-w-[1600px]">
       <header className="mb-4 flex items-center justify-between">
@@ -111,33 +139,8 @@ export default async function ActualsPage({
         </div>
       </header>
 
-      {/* Activity selector */}
-      <div
-        data-slot="activity-select"
-        role="tablist"
-        aria-label="Select activity"
-        className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 whitespace-nowrap sm:mx-0 sm:flex-wrap sm:overflow-visible sm:whitespace-normal sm:px-0"
-      >
-        {ACTIVITY_KEYS.map((key: ActivityKey) => {
-          const isActive = key === activityKey;
-          return (
-            <Link
-              key={key}
-              href={`/actuals?activity=${key}`}
-              data-activity={key}
-              role="tab"
-              aria-selected={isActive}
-              className={`inline-flex min-h-11 shrink-0 items-center rounded-md border px-3.5 text-sm font-medium ${
-                isActive
-                  ? "border-neutral-900 bg-neutral-900 text-white"
-                  : "border-neutral-200 hover:bg-neutral-50"
-              }`}
-            >
-              {ACTIVITIES[key].label}
-            </Link>
-          );
-        })}
-      </div>
+      {/* Activity selector (P2-5: client switcher preserves filters across switch) */}
+      <ActivitySwitcher activityKeys={ACTIVITY_KEYS} activeKey={activityKey} />
 
       {/* Plan row count / empty state for this activity */}
       {planRows.length === 0 ? (
@@ -215,6 +218,8 @@ export default async function ActualsPage({
               activityKey={activityKey}
               periodId={activePeriod.id}
               items={activeItems}
+              initialFacets={initialFacets}
+              initialSfid={initialSfid}
             />
           </div>
         </section>
