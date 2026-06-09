@@ -63,7 +63,7 @@ Requirements for the initial release. Each maps to a roadmap phase.
 - [x] **DASH-03**: Dashboard shows planned budget vs actual spend
 - [x] **DASH-04**: Dashboard respects the active period and the Region/State/Distributor filters
 - [x] **DASH-05**: Dashboard surfaces a distinct **Cancelled** counter count alongside Planned / Executed / Pending; Cancelled rows are excluded from the "% executed" denominator (consistent with `TERMINAL_STATUSES` in `lib/activities/status.ts`)
-- [ ] **DASH-06**: Within the active period the dashboard shows a week-wise trend of planned vs executed vs cancelled counters and weekly actual spend, bucketed by `executions.executionDate`; a standalone rolling "recent N weeks" view is selectable independently of the active period
+- [x] **DASH-06**: Within the active period the dashboard shows a week-wise trend of planned vs executed vs cancelled counters and weekly actual spend, bucketed by `executions.executionDate`; a standalone rolling "recent N weeks" view is selectable independently of the active period
 - [x] **DASH-07**: User can drill Zone (= `plan_rows.region`) → State → District → Taluka; each level shows planned / executed / cancelled counter counts and planned-vs-actual expense for the rows below it, reusing the cascade utility in `lib/actuals/filter.ts`
 
 ### Export
@@ -138,7 +138,7 @@ Which phases cover which requirements. Populated during roadmap creation.
 | DASH-03 | Phase 4 — Compliance & Dashboard | Complete |
 | DASH-04 | Phase 4 — Compliance & Dashboard | Complete |
 | DASH-05 | Phase 4 — Compliance & Dashboard | Complete |
-| DASH-06 | Phase 4 — Compliance & Dashboard | Pending |
+| DASH-06 | Phase 4 — Compliance & Dashboard | Complete |
 | DASH-07 | Phase 4 — Compliance & Dashboard | Complete |
 | EXPT-01 | Phase 5 — Excel Export | Pending |
 
@@ -149,4 +149,4 @@ Which phases cover which requirements. Populated during roadmap creation.
 
 ---
 *Requirements defined: 2026-06-04*
-*Last updated: 2026-06-08 — Phase 3.1 inserted; GRID-09/10/11/12/13 and COMP-04 added (36 total).*
+*Last updated: 2026-06-09 — Phase 4 complete; DASH-06 shipped (04-04). All Phase 4 requirements (COMP-03, DASH-01..07) Complete.*

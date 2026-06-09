@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 04 Plan 03 COMPLETE — /dashboard route live. RSC page (force-dynamic, parseDashboardFilters Zod + status-strip per D-17, Promise.all of six 04-02 aggregators -> computeCompleteness from 04-01) + four server-rendered cards (StatStrip, ByActivity, ByRegion, Exception/D-07 amber-pill) + DashboardFilterBar client island (Region/State/District/Distributor cascade via optionsFor/D-11, URL-as-source-of-truth, NO status facet) + RefreshButton (revalidateDashboard Server Action, Pitfall 5) + redirect / -> /dashboard + Dashboard nav link. Recharts ^3.2.0 installed (overrides.react-is=$react, React-19 peer fix) with two placeholder slots pre-wired (weekly/byGeo props) for 04-04. tsc clean; npm test 248/250 (2 failures pre-existing at 390d27b, logged in deferred-items.md). Task 4 browser-verify APPROVED: % Executed live 100.0%=1/(1-0) and 0.0%=0/(2-0) (D-04 denominator wired), ?status=Done silently ignored. Next: 04-04 (Wave 3 — Recharts weekly trend + spend charts + rolling-N + Zone-Taluka drill tree + Playwright e2e; DASH-06, DASH-07)."
-last_updated: "2026-06-09T11:36:00.000Z"
-last_activity: 2026-06-09 -- Phase 04 Plan 03 complete (dashboard route + cards)
+stopped_at: "Phase 04 COMPLETE (4/4 plans). Plan 04-04 shipped DASH-06 + completed DASH-07: weekly execution-trend chart (Recharts stacked AreaChart, ISO-week Cancelled/Executed/Pending), weekly spend chart (actual ₹ line + flat planned reference line per Open Question #4 option c), rolling-N toggle (Period/4w/8w/12w -> ?mode=rolling&weeks=N, server clamps {4,8,12}), and Zone->State->District->Taluka native-<details> drill tree with upward-aggregating metrics, fed by new pure lib/compliance/tree.ts buildGeoTree(GeoRow[]). Playwright e2e/dashboard.spec.ts 4/4 green (DASH-01/04/06/07); buildGeoTree 8/8 unit; tsc clean. Task 4 browser-verify (gate=blocking) APPROVED: 7 Recharts SVGs no console errors, region filter narrows StatStrip+charts+tree, North plan 8 = StateA 4 + StateB 4, D-03/D-04 asymmetry live (%Exec 100%=12/(16-4) AND %Canc 25%=4/16), actual ₹19,500. All Phase 4 requirements (COMP-03, DASH-01..07) Complete. Next: Phase 4 verification, then Phase 5 (Excel Export)."
+last_updated: "2026-06-09T12:24:00.000Z"
+last_activity: 2026-06-09 -- Phase 04 COMPLETE (4/4 plans; DASH-06 shipped, DASH-07 done)
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 22
-  completed_plans: 18
-  percent: 56
+  completed_plans: 19
+  percent: 59
 ---
 
 # Project State
@@ -25,17 +25,17 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 
 ## Current Position
 
-Phase: 04 (compliance-dashboard) — EXECUTING
-Plan: 4 of 4 (next)
-Status: Executing Phase 04 — Wave 1 (04-01, 04-02) + Wave 2 (04-03) DONE; Wave 3 (04-04) next
-Last activity: 2026-06-09 -- Phase 04 Plan 03 complete (dashboard route + cards)
+Phase: 04 (compliance-dashboard) — COMPLETE (4/4 plans)
+Plan: 4 of 4 (done)
+Status: Phase 04 COMPLETE — all waves done. Next action: Phase 4 verification, then Phase 5 (Excel Export).
+Last activity: 2026-06-09 -- Phase 04 COMPLETE (DASH-06 shipped, DASH-07 done)
 
 Phase 04 Wave structure:
 
 - Wave 1: 04-01 (status registry + computeCompleteness — COMP-03, DASH-05) — DONE
 - Wave 1: 04-02 (lib/db/dashboard.ts aggregators + PGlite tests — DASH-01..07) — DONE
 - Wave 2: 04-03 (/dashboard RSC + StatStrip/ByActivity/ByRegion/Exception + FilterBar + redirect + Recharts install — DASH-01..05, DASH-07) — DONE
-- Wave 3: 04-04 (Recharts weekly trend + spend charts + rolling-N + Zone-Taluka drill tree + e2e — DASH-06, DASH-07) — TODO
+- Wave 3: 04-04 (Recharts weekly trend + spend charts + rolling-N + Zone-Taluka drill tree + e2e — DASH-06, DASH-07) — DONE
 
 Phase 3 (Actuals Grid) — COMPLETE 5/5 (03-01..03-05).
 
@@ -85,6 +85,7 @@ Progress: [██████░░░░] 60% (3/5 Phase 3.1 plans done)
 | Phase 03_1 P01 | 21 min | 3 tasks | 9 files |
 | Phase 03_1 P03 | 10 min | 3 tasks | 5 files |
 | Phase 04 P03 | 55 min | 4 tasks | 12 files |
+| Phase 04 P04 | 48 min | 4 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -126,6 +127,9 @@ Recent decisions affecting current work:
 - [04-03]: Dashboard cards are pure RSC presentation — each receives its pre-aggregated slice as a typed prop; zero DB/SQL access inside card components. Every number flows through lib/db/dashboard (04-02) -> computeCompleteness (04-01).
 - [04-03]: % Executed and % Cancelled use ASYMMETRIC denominators (D-04): executed/(planned-cancelled) vs cancelled/planned. Verified live (1/(1-0)=100.0%, 0/(2-0)=0.0%); contrast on a single dataset blocked only by AG-Grid headless-edit limitation, math covered by completeness.test.ts.
 - [04-03]: Plan-04-04 placeholder slots (weekly-trend-chart, geo-drill-tree) pre-wired with weekly={weekly} and rows={byGeo} props so next-plan chart/tree islands plug in with no further server work.
+- [04-04]: Open Question #4 resolved option (c) — weekly TREND chart shows recorded executions only (no fabricated planned baseline; honest caption); weekly SPEND chart draws planned ₹ as a single flat reference line (period planned ₹ / N weeks) with a disclosure caption that plan rows carry no per-week cadence.
+- [04-04]: lib/compliance/tree.ts buildGeoTree is a NEW pure module (RESEARCH Pattern 4 option a), NOT a GeoRow→UnitRow shoehorn of optionsFor — single O(N) Map pass, alphabetical sibling sort, '(unassigned)' for empty levels; metrics sum upward at every level (parent === Σ children), the literal mechanism behind DASH-07 #7. import type GeoRow only (no runtime dep); aggregateByGeo return shape consumed directly with zero render-time recompute.
+- [04-04]: Geo drill tree kept 'use client' despite native <details> working server-side — preserves aria-expanded / future inline-edit upgrade path and straightforward prop drilling.
 
 ### Pending Todos
 
@@ -156,6 +160,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-09T11:36:00Z
-Stopped at: Phase 04 Plan 03 COMPLETE — /dashboard route + four RSC cards + URL-driven FilterBar (no status facet, D-17) + RefreshButton (revalidateDashboard) + redirect / -> /dashboard + Dashboard nav link. Recharts ^3.2.0 installed (overrides.react-is=$react) with placeholder slots pre-wired for 04-04. tsc clean; npm test 248/250 (2 pre-existing failures logged in deferred-items.md). Task 4 browser-verify APPROVED (% Executed live 100.0%/0.0%, ?status=Done ignored). Dev-DB migration-journal drift root-caused as ENVIRONMENT issue (not Phase 4 code), dev DB reset+reseeded (.pglite.bak-20260609). Next: 04-04 (Wave 3 — Recharts charts + rolling-N + Zone-Taluka drill tree + Playwright e2e; DASH-06, DASH-07).
+Last session: 2026-06-09T12:24:00Z
+Stopped at: Phase 04 COMPLETE (4/4 plans). Plan 04-04 closed — DASH-06 shipped + DASH-07 completed: Recharts weekly execution-trend chart + weekly spend chart (actual ₹ + flat planned reference line, Open Question #4 option c), rolling-N toggle (Period/4w/8w/12w, server clamp {4,8,12}), Zone→State→District→Taluka native-<details> drill tree, all fed by new pure lib/compliance/tree.ts buildGeoTree. e2e 4/4 green (DASH-01/04/06/07), buildGeoTree 8/8 unit, tsc clean. Task 4 browser-verify (gate=blocking) APPROVED (7 Recharts SVGs no console errors, region filter narrows all, upward aggregation verified, D-03/D-04 asymmetry live, actual ₹19,500). All Phase 4 requirements (COMP-03, DASH-01..07) Complete. Next: Phase 4 verification, then Phase 5 (Excel Export).
 Resume file: 
