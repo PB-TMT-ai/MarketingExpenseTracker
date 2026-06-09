@@ -291,3 +291,33 @@ describe("buildColumnDefs — ACTV-03 extensibility (synthetic 7th activity)", (
     expect(typeof lineTotalCol?.valueGetter).toBe("function");
   });
 });
+
+// ---------------------------------------------------------------------------
+// GRID-11: editability is status-independent (no lock-on-Done)
+// ---------------------------------------------------------------------------
+
+/**
+ * REGRESSION GUARD (GRID-11 / D3.1-04 / R1).
+ *
+ * The "P3 lock-on-Done" — a function-valued `editable` predicate that returned false when
+ * a row's status === 'Done' — does NOT exist in the current source (re-grep at execution
+ * start confirmed zero hits for `resolveEditable`, `=== 'Done'`, `metaKey`/`ctrlKey`).
+ * It was reverted before HEAD.
+ *
+ * Because `editable` is a STATIC boolean (no per-row evaluation), this guard asserts the
+ * property itself: every actual (`fields.*`) column is `editable === true` AND a boolean,
+ * not a function. The `typeof === "boolean"` check is the teeth — it fails if a function-
+ * valued `editable` (i.e. a status-gating predicate) ever creeps back in.
+ */
+describe("buildColumnDefs — GRID-11: editability is status-independent (no lock-on-Done)", () => {
+  it("every actual (fields.*) column on counter-wall is editable:true (boolean, not a predicate)", () => {
+    const cfg = getActivity("counter-wall")!;
+    const cols = buildColumnDefs(cfg);
+    const actualCols = cols.filter((c) => c.field?.startsWith("fields."));
+    expect(actualCols.length).toBeGreaterThan(0);
+    actualCols.forEach((c) => {
+      expect(c.editable).toBe(true); // static true — never gated on status
+      expect(typeof c.editable).toBe("boolean"); // guards against a function-valued predicate returning
+    });
+  });
+});

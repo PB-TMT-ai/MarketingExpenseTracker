@@ -15,11 +15,28 @@
  *        override flag stored in fields.__overrides; clearOverride resets to formula.
  * D3-12: dirty rows highlighted via cellClassRules; override cells get a second class.
  * D3-10/11: Save bar reads the dirty Map; conflict rows get a data-slot marker.
+ *
+ * GRID-09 hot path (phase-3.1): rowsRef + applyTransaction for per-row writes.
+ * GRID-12 (phase-3.1): dual sticky SaveBar (top + bottom) via useSaveExecutions
+ *        — one submit / one pending / one count; Ctrl/Cmd+S routes here too.
+ * GRID-13 (phase-3.1): DOM paste listener on the grid wrapper — full Excel/Sheets
+ *        TSV block paste, respects displayed-row order, coerces by FieldKind.
+ *
+ * design-pass features layered on top of the GRID-09 hot path:
+ *   P1-1: shared Notes column with override-justification prompt
+ *   P1-2: smart per-row conflict reload via fetchExecutionForRow (no full reload)
+ *   P1-3: beforeunload guard + faded placeholder row indicator
+ *   P2-1: live GridStats (Coverage / Done / In progress / Pending / Cancelled)
+ *   P2-3: paste/edit values matching the formula no longer flip the override flag
+ *   P2-4: persistent "Last saved HH:MM" stamp
+ *   P2-5: URL filter persistence (initialFacets/initialSfid + history.replaceState)
+ *   P3:   single consolidated conflict summary + clickable Pending stat
  */
 
 import "./ag-grid-setup";
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -32,6 +49,7 @@ import {
   type IRowNode,
   type CellValueChangedEvent,
   type ColDef,
+  type Column,
 } from "ag-grid-community";
 import { buildColumnDefs } from "@/lib/actuals/colDefs";
 import { cloneUnitForAdd, type UnitRow, type PopLineInput } from "@/lib/actuals/rows";
@@ -42,7 +60,13 @@ import {
   type FacetSelections,
   type FacetKey,
 } from "@/lib/actuals/filter";
+import {
+  useSaveExecutions,
+  type UnitPatch,
+} from "@/lib/actuals/use-save-executions";
+import { coerceForKind } from "@/lib/actuals/coerce";
 import { getActivity } from "@/lib/activities/registry";
+import type { FieldKind } from "@/lib/activities/types";
 import {
   type SaveBatchState,
   fetchExecutionForRow,
@@ -120,11 +144,29 @@ export default function ActualsGrid({
   // Resolve activity config for colDefs
   const activityCfg = useMemo(() => getActivity(activityKey), [activityKey]);
 
+  // GRID-13: map each actual-column key → its FieldDef.kind, built ONCE from the resolved
+  // activity config. The paste handler resolves a target column's coercion kind via this
+  // lookup (default "text" for any unmapped column — safe, no numeric coercion).
+  const kindByKey = useMemo(
+    () =>
+      new Map<string, FieldKind>(
+        (activityCfg?.actualColumns ?? []).map((f) => [f.key, f.kind]),
+      ),
+    [activityCfg],
+  );
+
   // AG Grid API ref
   const apiRef = useRef<GridApi<UnitRow> | null>(null);
 
+  // Grid container element ref — the GRID-13 paste listener attaches here (scoped to grid
+  // focus, NOT document, so we don't hijack pastes elsewhere on the page).
+  const gridWrapRef = useRef<HTMLDivElement>(null);
+
   // POP/Dealer-Kit modal: which kit row is open (rowKey), or null when closed (D3-13/14).
   const [popRowKey, setPopRowKey] = useState<string | null>(null);
+
+  // GRID-13 overflow note — set when a pasted block has cells outside the editable area.
+  const [pasteNote, setPasteNote] = useState<string | null>(null);
 
   // P2-4: persistent "last saved HH:MM" stamp. The SaveBar's "Saved" flash
   // expires in 3s; this survives so a reviewer who saved and Alt-Tabbed away
@@ -132,28 +174,57 @@ export default function ActualsGrid({
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
-  // Row data state — single source of truth for the grid rows.
-  // We keep a Map<rowKey, UnitRow> for O(1) dirty-state management and a parallel
-  // array for rowData so AG Grid can reconcile via getRowId.
+  // Row data state model (GRID-09 hot-path refactor).
+  //
+  // rowsRef  — the AUTHORITATIVE off-React row store (Map<rowKey, UnitRow>). Edits
+  //            mutate this ref + push the single changed row through
+  //            api.applyTransaction({ update: [row] }), so AG Grid refreshes ONLY
+  //            that row's node (matched by getRowId). NO clone-on-edit, NO full
+  //            rowData rebuild, NO setRowData reconcile per keystroke.
+  // dirtyKeys — a Set<rowKey> in React state that drives ONLY the save-bar count.
+  //            It changes at most once per row (first-dirty), not per keystroke, so
+  //            the save-bar re-render is rare.
+  //
+  // AG Grid is seeded ONCE from the initial rows (initialRowData below); after that
+  // the grid owns its node data and we patch via transactions (R10: getRowId set).
   // ---------------------------------------------------------------------------
-  const [rowMap, setRowMap] = useState<Map<string, UnitRow>>(() => {
-    const m = new Map<string, UnitRow>();
-    for (const r of initialRows) m.set(r.rowKey, r);
-    return m;
-  });
+  const rowsRef = useRef<Map<string, UnitRow>>(
+    (() => {
+      const m = new Map<string, UnitRow>();
+      for (const r of initialRows) m.set(r.rowKey, r);
+      return m;
+    })(),
+  );
 
-  // Derive the rowData array from the map (AG Grid reconciles by rowKey via getRowId).
-  const rowData = useMemo(() => Array.from(rowMap.values()), [rowMap]);
+  // dirtyKeys drives the save-bar count (and the derived dirtyRows). State, not ref,
+  // because the save bar must re-render when the count changes.
+  const [dirtyKeys, setDirtyKeys] = useState<Set<string>>(() => new Set());
+
+  // Seed AG Grid's rowData ONCE. We do NOT rebuild this array on edits — applyTransaction
+  // refreshes individual nodes thereafter. FilterBar derives its facet options from the
+  // same initial set (facets are plan-context based; edits don't change the facet domain).
+  const initialRowData = useRef<UnitRow[]>(initialRows).current;
+
+  // version counter bumped when the React-side view of rowsRef needs to update
+  // (conflict banners, GridStats, POP modal). AG Grid itself reflects edits via
+  // applyTransaction — it does NOT depend on this counter.
+  const [rowsVersion, setRowsVersion] = useState(0);
+  const bumpRowsVersion = useCallback(() => setRowsVersion((v) => v + 1), []);
 
   // ---------------------------------------------------------------------------
   // Filter state — driven by FilterBar, consumed by AG Grid external filter.
-  // ---------------------------------------------------------------------------
   // P2-5: seed from the URL-derived initial filters so a shared/reloaded link
   // (or filters carried across an activity switch) apply on first paint.
+  // ---------------------------------------------------------------------------
   const [facetSelections, setFacetSelections] = useState<FacetSelections>(
     initialFacets ?? {},
   );
   const [sfidSearch, setSfidSearch] = useState<string>(initialSfid);
+
+  // GRID-09 Fix 3: defer the typed SFID search so onFilterChanged() does not re-run
+  // once per keystroke. facetSelections changes are discrete (dropdown clicks) and
+  // don't need deferral — only the free-text search does.
+  const deferredSfid = useDeferredValue(sfidSearch);
 
   // Refs so the AG Grid callbacks (isExternalFilterPresent / doesExternalFilterPass)
   // always see the latest values without stale closures.
@@ -162,12 +233,13 @@ export default function ActualsGrid({
 
   useEffect(() => {
     facetRef.current = facetSelections;
-    sfidRef.current = sfidSearch;
+    sfidRef.current = deferredSfid;
     apiRef.current?.onFilterChanged();
     // P2-5: keep the URL in sync with whatever drives the filter (the bar or
-    // the clickable Pending stat). replaceState → reloadable + shareable, no nav.
-    syncFilterUrl(facetSelections, sfidSearch);
-  }, [facetSelections, sfidSearch]);
+    // the clickable Pending stat). Uses the DEFERRED sfid so the URL only
+    // updates after typing settles — saves history churn.
+    syncFilterUrl(facetSelections, deferredSfid);
+  }, [facetSelections, deferredSfid]);
 
   const isExternalFilterPresent = useCallback((): boolean => {
     const hasFacets = Object.values(facetRef.current).some((v) => v && v.length > 0);
@@ -343,12 +415,12 @@ export default function ActualsGrid({
   // P1-3: fade placeholder rows so a reviewer can tell a pristine draft from a
   // saved execution at a glance. A row that has been edited (dirty) is no longer
   // treated as a faded placeholder even if it started as one.
+  // P3: highlight rows flagged as version-conflicts so the single summary banner
+  // ("N rows conflicted") points at something visible in the grid.
   const rowClassRules = useMemo(
     () => ({
       "ag-row-placeholder": (p: { data?: UnitRow }) =>
         Boolean(p.data?.isPlaceholder) && !p.data?.dirty,
-      // P3: highlight rows flagged as version-conflicts so the single summary
-      // banner ("N rows conflicted") points at something visible in the grid.
       "ag-row-conflict": (p: { data?: UnitRow }) =>
         Boolean(p.data?.fields?.__conflict),
     }),
@@ -360,7 +432,7 @@ export default function ActualsGrid({
   // ---------------------------------------------------------------------------
   const handleCellValueChanged = useCallback(
     (event: CellValueChangedEvent<UnitRow>) => {
-      const { data, colDef, newValue } = event;
+      const { data, colDef, newValue, api } = event;
       if (!data) return;
 
       // Determine the field key from colId (derived cols use colId) or the field path.
@@ -376,76 +448,67 @@ export default function ActualsGrid({
         return;
       }
 
-      setRowMap((prev) => {
-        const next = new Map(prev);
-        const row = next.get(data.rowKey);
-        if (!row) return prev;
+      // GRID-09 hot path: read from the authoritative ref, mutate it, refresh ONLY
+      // this row's node via applyTransaction. No Map clone, no rowData rebuild.
+      const row = rowsRef.current.get(data.rowKey);
+      if (!row) return;
 
-        // Clone fields (never mutate the stored object in place).
-        const newFields = { ...row.fields, [fieldsKey]: newValue };
+      // Clone fields (never mutate the stored fields object in place).
+      const newFields = { ...row.fields, [fieldsKey]: newValue };
 
-        // D3-05 + P2-3 audit hygiene: only mark a derived cell as overridden
-        // when the new value actually differs from what the formula would
-        // compute. Without this, an Excel paste that happens to match the
-        // formula's natural answer (or a single-cell paste of the same number)
-        // would silently flip the override flag — which would then bloat the
-        // P1-1 override audit log with no-op entries.
-        const isDerived = Boolean(colDef.valueGetter);
-        if (isDerived && newValue !== null && newValue !== undefined) {
-          const naturalVal = computeDerived(activityKey, fieldsKey, {
-            ...newFields,
-            __overrides: {
-              ...((newFields["__overrides"] as
-                | Record<string, boolean>
-                | undefined) ?? {}),
-              [fieldsKey]: false,
-            },
-          });
-          const newNum = Number(newValue);
-          const matchesFormula =
-            naturalVal != null &&
-            Number.isFinite(newNum) &&
-            Math.abs(newNum - naturalVal) < 0.005;
-          if (!matchesFormula) {
-            setOverride(newFields, fieldsKey, true);
-          } else {
-            // Pasted/typed value matches formula — make sure any prior override
-            // flag is cleared so the cell goes back to "tracking the formula."
-            clearOverride(newFields, fieldsKey);
-          }
+      // D3-05 + P2-3 audit hygiene: only mark a derived cell as overridden
+      // when the new value actually differs from what the formula would
+      // compute. Without this, an Excel paste that happens to match the
+      // formula's natural answer (or a single-cell paste of the same number)
+      // would silently flip the override flag — which would then bloat the
+      // P1-1 override audit log with no-op entries.
+      const isDerived = Boolean(colDef.valueGetter);
+      if (isDerived && newValue !== null && newValue !== undefined) {
+        const naturalVal = computeDerived(activityKey, fieldsKey, {
+          ...newFields,
+          __overrides: {
+            ...((newFields["__overrides"] as
+              | Record<string, boolean>
+              | undefined) ?? {}),
+            [fieldsKey]: false,
+          },
+        });
+        const newNum = Number(newValue);
+        const matchesFormula =
+          naturalVal != null &&
+          Number.isFinite(newNum) &&
+          Math.abs(newNum - naturalVal) < 0.005;
+        if (!matchesFormula) {
+          setOverride(newFields, fieldsKey, true);
+        } else {
+          // Typed/pasted value matches the formula — clear any prior override
+          // flag so the cell goes back to "tracking the formula."
+          clearOverride(newFields, fieldsKey);
         }
+      }
 
-        const updatedRow: UnitRow = {
-          ...row,
-          fields: newFields,
-          dirty: true,
-          isPlaceholder: false, // any edit promotes a placeholder to a real row
-        };
-        next.set(data.rowKey, updatedRow);
-        return next;
-      });
-    },
-    [activityKey],
-  );
+      const updatedRow: UnitRow = {
+        ...row,
+        fields: newFields,
+        dirty: true,
+        isPlaceholder: false, // any edit promotes a placeholder to a real row
+      };
+      rowsRef.current.set(data.rowKey, updatedRow);
 
-  // ---------------------------------------------------------------------------
-  // P2-3: clipboard paste sanitization.
-  // Excel-pasted values often arrive with ₹, commas, or trailing whitespace
-  // ("₹1,234.56", "1,500 "). Strip those at the boundary so the cell editor
-  // receives a clean number string. AG Grid Community supports single-cell
-  // paste out of the box; range paste is Enterprise-only — but even single-
-  // cell paste is meaningfully better than the row-by-row typing it replaces.
-  // ---------------------------------------------------------------------------
-  const processCellFromClipboard = useCallback(
-    (params: { value: unknown }): unknown => {
-      const v = params.value;
-      if (typeof v !== "string") return v;
-      // Strip ₹, commas, percent signs, and surrounding whitespace.
-      // Keep digits, decimal point, and minus sign.
-      const cleaned = v.replace(/[₹,%\s]/g, "").trim();
-      return cleaned;
+      // Refresh ONLY this row's node — re-runs valueGetter + cellClassRules for it.
+      api.applyTransaction({ update: [updatedRow] });
+
+      // O(1) amortised; only changes the count on the FIRST edit of a given row.
+      setDirtyKeys((prev) =>
+        prev.has(data.rowKey) ? prev : new Set(prev).add(data.rowKey),
+      );
+
+      // P2-1: let GridStats re-derive (status changes per cell-commit, NOT per
+      // keystroke — AG Grid commits on blur/Enter, so this is one render per
+      // cell change, not a typing storm).
+      bumpRowsVersion();
     },
-    [],
+    [activityKey, bumpRowsVersion],
   );
 
   // ---------------------------------------------------------------------------
@@ -453,12 +516,10 @@ export default function ActualsGrid({
   // ---------------------------------------------------------------------------
   function handleAddUnit(row: UnitRow) {
     const newRow = cloneUnitForAdd(row);
-    setRowMap((prev) => {
-      const next = new Map(prev);
-      next.set(newRow.rowKey, newRow);
-      return next;
-    });
-    // Let AG Grid know rowData changed (it will reconcile via getRowId).
+    rowsRef.current.set(newRow.rowKey, newRow);
+    // Insert ONLY the new node — no full rowData rebuild (GRID-09).
+    apiRef.current?.applyTransaction({ add: [newRow] });
+    bumpRowsVersion();
   }
 
   // ---------------------------------------------------------------------------
@@ -468,85 +529,82 @@ export default function ActualsGrid({
   // ---------------------------------------------------------------------------
   const handlePopConfirm = useCallback(
     (rowKey: string, lines: PopLineInput[]) => {
-      setRowMap((prev) => {
-        const next = new Map(prev);
-        const row = next.get(rowKey);
-        if (!row) return prev;
+      const row = rowsRef.current.get(rowKey);
+      if (row) {
         const total =
           Math.round(lines.reduce((s, l) => s + l.lineTotal, 0) * 100) / 100;
-        next.set(rowKey, {
+        const updatedRow: UnitRow = {
           ...row,
           popLines: lines,
           fields: { ...row.fields, totalCost: total },
           dirty: true,
           isPlaceholder: false,
-        });
-        return next;
-      });
+        };
+        rowsRef.current.set(rowKey, updatedRow);
+        apiRef.current?.applyTransaction({ update: [updatedRow] });
+        setDirtyKeys((prev) =>
+          prev.has(rowKey) ? prev : new Set(prev).add(rowKey),
+        );
+        bumpRowsVersion();
+      }
       setPopRowKey(null);
       const node = apiRef.current?.getRowNode(rowKey);
       if (node) apiRef.current?.refreshCells({ rowNodes: [node], force: true });
     },
-    [],
+    [bumpRowsVersion],
   );
 
   // ---------------------------------------------------------------------------
   // clearOverrideForRow — called from a "reset to formula" affordance (inline button).
   // ---------------------------------------------------------------------------
-  const handleClearOverride = useCallback((rowKey: string, fieldKey: string) => {
-    setRowMap((prev) => {
-      const next = new Map(prev);
-      const row = next.get(rowKey);
-      if (!row) return prev;
-      const newFields = { ...row.fields };
-      clearOverride(newFields, fieldKey);
-      // Clear the stored value so the valueGetter recomputes.
-      delete newFields[fieldKey];
-      next.set(rowKey, { ...row, fields: newFields, dirty: true });
-      return next;
-    });
-    // Refresh the specific cell so the valueGetter fires again.
-    const node = apiRef.current?.getRowNode(rowKey);
-    if (node) {
-      apiRef.current?.refreshCells({ rowNodes: [node], force: true });
-    }
-  }, []);
+  const handleClearOverride = useCallback(
+    (rowKey: string, fieldKey: string) => {
+      const row = rowsRef.current.get(rowKey);
+      if (row) {
+        const newFields = { ...row.fields };
+        clearOverride(newFields, fieldKey);
+        // Clear the stored value so the valueGetter recomputes.
+        delete newFields[fieldKey];
+        const updatedRow: UnitRow = { ...row, fields: newFields, dirty: true };
+        rowsRef.current.set(rowKey, updatedRow);
+        apiRef.current?.applyTransaction({ update: [updatedRow] });
+        setDirtyKeys((prev) =>
+          prev.has(rowKey) ? prev : new Set(prev).add(rowKey),
+        );
+        bumpRowsVersion();
+      }
+      // Refresh the specific cell so the valueGetter fires again.
+      const node = apiRef.current?.getRowNode(rowKey);
+      if (node) {
+        apiRef.current?.refreshCells({ rowNodes: [node], force: true });
+      }
+    },
+    [bumpRowsVersion],
+  );
   void handleClearOverride; // referenced in future 03-05 reset affordance
 
   // ---------------------------------------------------------------------------
-  // Dirty row count (for SaveBar)
+  // Dirty rows (for SaveBar) — derived from the dirtyKeys Set, recomputed only when
+  // the Set changes (i.e. a row becomes first-dirty or is cleared on save), NOT on
+  // every keystroke. Each key resolves to its latest object in rowsRef.
   // ---------------------------------------------------------------------------
   const dirtyRows = useMemo(
-    () => Array.from(rowMap.values()).filter((r) => r.dirty),
-    [rowMap],
+    () =>
+      [...dirtyKeys]
+        .map((k) => rowsRef.current.get(k))
+        .filter((r): r is UnitRow => Boolean(r) && Boolean(r?.dirty)),
+    [dirtyKeys],
   );
-
-  // ---------------------------------------------------------------------------
-  // P1-3: warn before leaving with unsaved edits. A reviewer who Alt-Tabs to an
-  // Excel reference and then closes/navigates the tab would otherwise lose every
-  // unsaved correction silently. The browser shows its native "Leave site?"
-  // prompt only while there is at least one dirty row.
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    if (dirtyRows.length === 0) return;
-    const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      // Legacy requirement for some browsers to actually show the prompt.
-      e.returnValue = "";
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [dirtyRows.length]);
 
   // ---------------------------------------------------------------------------
   // onSaveResult — called by SaveBar after saveExecutionsBatch returns.
   // D3-11: savedIds → clear dirty + update executionId+version.
   //         conflicts → mark row with conflict flag (do NOT clear value).
+  // P2-4: stamp the last successful save time when at least one row committed.
   // ---------------------------------------------------------------------------
   const handleSaveResult = useCallback((result: SaveBatchState) => {
     if (!result.ok) return;
 
-    // P2-4: stamp the last successful save time when at least one row committed.
     if (result.savedIds.length > 0) {
       setLastSavedAt(
         new Date().toLocaleTimeString([], {
@@ -556,42 +614,69 @@ export default function ActualsGrid({
       );
     }
 
-    setRowMap((prev) => {
-      const next = new Map(prev);
+    const rows = rowsRef.current;
+    const updated: UnitRow[] = [];
+    const clearedKeys: string[] = [];
 
-      for (const saved of result.savedIds) {
-        const row = next.get(saved.rowKey);
-        if (!row) continue;
-        next.set(saved.rowKey, {
-          ...row,
-          executionId: saved.id,
-          version: saved.version,
-          dirty: false,
-          isPlaceholder: false,
-        });
-      }
+    // Saved rows → clear dirty, set executionId + version (D3-11). The conflict
+    // rows below are still version-bumped from the same saved set when applicable.
+    for (const saved of result.savedIds) {
+      const row = rows.get(saved.rowKey);
+      if (!row) continue;
+      const next: UnitRow = {
+        ...row,
+        executionId: saved.id,
+        version: saved.version,
+        dirty: false,
+        isPlaceholder: false,
+      };
+      rows.set(saved.rowKey, next);
+      updated.push(next);
+      clearedKeys.push(saved.rowKey);
+    }
 
-      // Mark conflict rows — do NOT overwrite values (D3-11).
-      for (const conflictId of result.conflicts) {
-        // Conflicts are execution IDs; find the matching row by executionId.
-        for (const [key, row] of next) {
-          if (row.executionId === conflictId) {
-            next.set(key, { ...row, fields: { ...row.fields, __conflict: true } });
-          }
+    // Mark conflict rows — do NOT overwrite values (D3-11). Conflicts are execution
+    // IDs; find the matching row by executionId.
+    for (const conflictId of result.conflicts) {
+      for (const [key, row] of rows) {
+        if (row.executionId === conflictId) {
+          const next: UnitRow = {
+            ...row,
+            fields: { ...row.fields, __conflict: true },
+          };
+          rows.set(key, next);
+          updated.push(next);
         }
       }
+    }
 
-      return next;
-    });
-  }, []);
+    // Refresh the affected nodes in one transaction (matched by getRowId).
+    if (updated.length > 0) {
+      apiRef.current?.applyTransaction({ update: updated });
+    }
+
+    // Remove cleared (saved) keys from the dirty set — drives the save-bar count down.
+    if (clearedKeys.length > 0) {
+      setDirtyKeys((prev) => {
+        const next = new Set(prev);
+        for (const k of clearedKeys) next.delete(k);
+        return next;
+      });
+    }
+
+    // Bump the render version so the conflict-banner list re-derives from rowsRef.
+    if (result.conflicts.length > 0 || updated.length > 0) {
+      bumpRowsVersion();
+    }
+  }, [bumpRowsVersion]);
 
   // ---------------------------------------------------------------------------
   // handleConflictReload — P1-2: re-fetch the ONE stale row, patch it in place.
   // Previously this did window.location.reload(), which discarded every other
   // unsaved edit in the batch. Now we call fetchExecutionForRow for the single
-  // conflicting executionId and patch only that row into rowMap. All other
-  // dirty rows survive. Falls back to a full reload only if the action fails
-  // hard (network error, deleted row, etc.) — that's the correctness escape
+  // conflicting executionId and patch only that row into rowsRef via
+  // applyTransaction. All other dirty rows survive. Falls back to a full reload
+  // only if the action fails hard (network, deleted row) — correctness escape
   // hatch, not the default path.
   // ---------------------------------------------------------------------------
   const handleConflictReload = useCallback(
@@ -610,36 +695,248 @@ export default function ActualsGrid({
 
       if (!result.ok) {
         // Server says the row no longer exists or input was bad.
-        // A full reload re-syncs the whole grid (which is correct here:
-        // the row's identity is gone, the rowKey is dead).
+        // A full reload re-syncs the whole grid (the row's identity is gone).
         window.location.reload();
         return;
       }
 
-      setRowMap((prev) => {
-        const next = new Map(prev);
-        const existing = next.get(rowKey);
-        if (!existing) return prev;
-        next.set(rowKey, {
-          ...existing,
-          version: result.version,
-          fields: result.fields, // server-fresh; __conflict cleared by replacement
-          popLines: result.popLines, // undefined for non-kit rows; intentional
-          dirty: false,
-          isPlaceholder: false,
-        });
+      const existing = rowsRef.current.get(rowKey);
+      if (!existing) return;
+      const patched: UnitRow = {
+        ...existing,
+        version: result.version,
+        fields: result.fields, // server-fresh; __conflict cleared by replacement
+        popLines: result.popLines, // undefined for non-kit rows; intentional
+        dirty: false,
+        isPlaceholder: false,
+      };
+      rowsRef.current.set(rowKey, patched);
+      apiRef.current?.applyTransaction({ update: [patched] });
+
+      // Reloaded rows are no longer dirty.
+      setDirtyKeys((prev) => {
+        if (!prev.has(rowKey)) return prev;
+        const next = new Set(prev);
+        next.delete(rowKey);
         return next;
       });
 
-      // AG Grid needs an explicit refresh so the patched cells re-render
-      // (rowData identity changes via the new Map, but force the cells too).
-      const node = apiRef.current?.getRowNode(rowKey);
-      if (node) {
-        apiRef.current?.refreshCells({ rowNodes: [node], force: true });
-      }
+      // Bump so the conflict summary banner re-derives (this row is no longer
+      // flagged as a conflict).
+      bumpRowsVersion();
     },
-    [activityCfg],
+    [activityCfg, bumpRowsVersion],
   );
+
+  // ---------------------------------------------------------------------------
+  // Save flow (GRID-12) — SINGLE source of truth.
+  //
+  // useSaveExecutions owns the ONE useActionState / submit / onResult. Both SaveBar
+  // instances (top + bottom) and the Ctrl/Cmd+S shortcut call the SAME `submit`, share
+  // the SAME `pending`, and read the SAME dirtyCount — so there is never a double-submit
+  // or a divergent count.
+  // ---------------------------------------------------------------------------
+  const dirtyRowsRef = useRef<UnitRow[]>(dirtyRows);
+  dirtyRowsRef.current = dirtyRows;
+
+  const getDirtyUnits = useCallback((): UnitPatch[] => {
+    return dirtyRowsRef.current.map((row) => ({
+      rowKey: row.rowKey,
+      planRowId: row.planRowId,
+      executionId: row.executionId,
+      version: row.version,
+      fields: row.fields,
+      isPlaceholder: row.isPlaceholder,
+      // POP/Dealer-Kit lines (undefined for non-POP rows → normal insert/update path;
+      // an array → the action routes through savePopKit: one execution + N execution_items).
+      popLines: row.popLines,
+    }));
+  }, []);
+
+  const { submit, pending, state: saveState } = useSaveExecutions(
+    getDirtyUnits,
+    activityKey,
+    periodId,
+    handleSaveResult,
+  );
+
+  const dirtyCount = dirtyKeys.size;
+
+  // ---------------------------------------------------------------------------
+  // Ctrl/Cmd+S — ONE window keydown listener calling the SAME submit (GRID-12).
+  // Works regardless of which bar is visible. Guards on dirty && !pending so it never
+  // double-submits and never fires an empty save. preventDefault suppresses the browser's
+  // own Save dialog.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (dirtyCount > 0 && !pending) submit();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dirtyCount, pending, submit]);
+
+  // ---------------------------------------------------------------------------
+  // P1-3: warn before leaving with unsaved edits. A reviewer who Alt-Tabs to an
+  // Excel reference and then closes/navigates the tab would otherwise lose every
+  // unsaved correction silently. The browser shows its native "Leave site?"
+  // prompt only while there is at least one dirty row.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (dirtyCount === 0) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Legacy requirement for some browsers to actually show the prompt.
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirtyCount]);
+
+  // ---------------------------------------------------------------------------
+  // GRID-13 — paste-block handler.
+  //
+  // AG Grid Community has NO clipboard/range/fill (all Enterprise, R7) — so this is a plain
+  // DOM `paste` listener on the grid container ref (scoped to grid focus, not document).
+  //
+  // Flow:
+  //   1. Read clipboardData text/plain; require a focused cell (the anchor).
+  //   2. Parse Excel/Sheets TSV into a 2-D array (\n rows, \t cols).
+  //   3. Map onto the EDITABLE fields.* columns at/after the anchor, left→right
+  //      (read-only plan.* and action columns are SKIPPED — security + default rule).
+  //   4. Walk DISPLAYED rows from the anchor down via getDisplayedRowAtIndex (R5 — respects
+  //      the active sort/filter; never the rowData array order).
+  //   5. Coerce each cell per its column kind (coerceForKind); derived cells get the override
+  //      flag (setOverride — LOCKED, identical to a manual edit).
+  //   6. Write the WHOLE block via ONE applyTransaction({ update }) (GRID-09 batched path),
+  //      mark the changed rows dirty in ONE setState, and surface an overflow note for any
+  //      cells that fell off the right edge or the bottom.
+  //
+  // Security invariant (LOCKED): writes ONLY fields.* on EXISTING displayed rows (each
+  // already has a planRowId). It can NEVER introduce an SFID or bypass the off-plan guard.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const el = gridWrapRef.current;
+    if (!el) return;
+
+    const onPaste = (e: ClipboardEvent) => {
+      const api = apiRef.current;
+      if (!api) return;
+
+      const text = e.clipboardData?.getData("text/plain");
+      if (!text) return;
+
+      const focused = api.getFocusedCell();
+      if (!focused) return;
+      e.preventDefault();
+
+      // (2) Parse TSV: strip a single trailing newline, then split rows + columns.
+      const matrix = text
+        .replace(/\r\n?$|\n$/, "")
+        .split(/\r\n|\n|\r/)
+        .map((line) => line.split("\t"));
+
+      // (3) Editable fields.* columns at/after the anchor (skip read-only plan.* + actions).
+      const allCols = api.getAllDisplayedColumns();
+      const anchorColIdx = allCols.findIndex(
+        (c) => c.getColId() === focused.column.getColId(),
+      );
+      if (anchorColIdx < 0) return;
+      const editableCols = allCols.slice(anchorColIdx).filter((c) => {
+        const def = c.getColDef();
+        return (
+          def.editable === true &&
+          typeof def.field === "string" &&
+          def.field.startsWith("fields.")
+        );
+      });
+
+      // Resolve a column's coercion kind via the activity registry (default "text").
+      const kindOf = (col: Column): FieldKind => {
+        const field = col.getColDef().field;
+        const key =
+          typeof field === "string" && field.startsWith("fields.")
+            ? field.slice("fields.".length)
+            : "";
+        return kindByKey.get(key) ?? "text";
+      };
+
+      // (4)+(5) Walk displayed rows from the anchor down; coerce + write into cloned fields.
+      const changed: UnitRow[] = [];
+      let dropped = 0;
+
+      for (let i = 0; i < matrix.length; i++) {
+        const node = api.getDisplayedRowAtIndex(focused.rowIndex + i);
+        if (!node?.data) {
+          // Ran off the bottom — every cell in this pasted row is dropped.
+          dropped += matrix[i].length;
+          continue;
+        }
+        const row = rowsRef.current.get(node.data.rowKey);
+        if (!row) {
+          dropped += matrix[i].length;
+          continue;
+        }
+
+        const newFields = { ...row.fields };
+        for (let j = 0; j < matrix[i].length; j++) {
+          const col = editableCols[j];
+          if (!col) {
+            dropped++; // Ran off the right edge (no editable column here).
+            continue;
+          }
+          const def = col.getColDef();
+          const key = (def.field as string).slice("fields.".length);
+          const coerced = coerceForKind(matrix[i][j], kindOf(col));
+          newFields[key] = coerced;
+          // Derived cell (has a valueGetter): a pasted value overrides the formula (LOCKED).
+          if (def.valueGetter && coerced != null) {
+            setOverride(newFields, key, true);
+          }
+        }
+
+        const updated: UnitRow = {
+          ...row,
+          fields: newFields,
+          dirty: true,
+          isPlaceholder: false, // pasting promotes a placeholder to a real row
+        };
+        rowsRef.current.set(node.data.rowKey, updated);
+        changed.push(updated);
+      }
+
+      // (6) ONE transaction for the whole block (GRID-09 batched write).
+      if (changed.length > 0) {
+        api.applyTransaction({ update: changed });
+        setDirtyKeys((prev) => {
+          const next = new Set(prev);
+          for (const r of changed) next.add(r.rowKey);
+          return next;
+        });
+        bumpRowsVersion();
+      }
+
+      // Overflow note — neutral inline note (planner copy). Auto-dismisses.
+      if (dropped > 0) {
+        setPasteNote(
+          `Pasted block; ${dropped} cell${dropped === 1 ? "" : "s"} outside the editable area ${dropped === 1 ? "was" : "were"} ignored.`,
+        );
+      } else {
+        setPasteNote(null);
+      }
+    };
+
+    el.addEventListener("paste", onPaste);
+    return () => el.removeEventListener("paste", onPaste);
+    // `mounted` is REQUIRED in deps: the A3 mounted-guard renders a placeholder on the first
+    // render, so gridWrapRef.current is null then and the effect bails at `if (!el) return`.
+    // Without `mounted`, the effect never re-runs after the real grid div mounts (kindByKey is
+    // stable), leaving the paste listener permanently unattached (GRID-13 dead). Re-running on
+    // mount attaches it once gridWrapRef.current exists.
+  }, [kindByKey, mounted, bumpRowsVersion]);
 
   // ---------------------------------------------------------------------------
   // onGridReady
@@ -652,6 +949,24 @@ export default function ActualsGrid({
       (window as unknown as Record<string, unknown>).__actualsGridApi = e.api;
     }
   }, []);
+
+  // ---------------------------------------------------------------------------
+  // Live row view — derived from the authoritative rowsRef on every rowsVersion
+  // bump. Used by GridStats (P2-1) and the conflict summary banner (P3). The
+  // grid itself does NOT consume this — it owns its own node data via
+  // applyTransaction (GRID-09).
+  // ---------------------------------------------------------------------------
+  const liveRows = useMemo(
+    () => [...rowsRef.current.values()],
+    // rowsRef is mutable; rowsVersion is the explicit dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rowsVersion],
+  );
+
+  const conflictRows = useMemo(
+    () => liveRows.filter((r) => r.fields.__conflict),
+    [liveRows],
+  );
 
   // ---------------------------------------------------------------------------
   // Render
@@ -677,21 +992,21 @@ export default function ActualsGrid({
 
   return (
     <div className="flex flex-col gap-3" data-slot="actuals-grid">
-      {/* Filter bar — drives the AG Grid external filter */}
+      {/* Filter bar — controlled (P2-5). selected/sfid + onFacetChange/onSfidChange. */}
       <FilterBar
-        allRows={rowData}
+        allRows={initialRowData}
         selected={facetSelections}
         sfid={sfidSearch}
         onFacetChange={(sel) => setFacetSelections(sel)}
         onSfidChange={(s) => setSfidSearch(s)}
       />
 
-      {/* P2-1: live status breakdown that updates as the manager edits.
+      {/* P2-1: live status breakdown updates as the manager edits.
           Honest first cut — doesn't try to define "% executed" precisely
           (that's a Phase 4 spec call). Surfaces what we can measure cheaply:
           plan rows covered (≥1 execution) and status counts on recorded rows. */}
       <GridStats
-        rows={rowData}
+        rows={liveRows}
         lastSavedAt={lastSavedAt}
         onFilterPending={handleFilterPending}
         pendingFilterActive={
@@ -700,10 +1015,32 @@ export default function ActualsGrid({
         }
       />
 
-      {/* Grid container — explicit height required by AG Grid (A4) */}
-      <div style={{ height: 600, width: "100%" }}>
+      {/* Top save bar (GRID-12) — sticky top-0, ABOVE the grid container and BELOW
+          FilterBar. z-30 clears AG Grid's pinned-header stacking context (R6). Shares the
+          SAME submit/pending/dirtyCount/lastResult as the bottom bar (single source of
+          truth). Rendered as a sibling of the grid container inside this flex column. */}
+      <SaveBar
+        slot="save-bar-top"
+        dirtyCount={dirtyCount}
+        pending={pending}
+        lastResult={saveState}
+        onSave={submit}
+        className="sticky top-0 z-30"
+      />
+
+      {/* Grid container — explicit height required by AG Grid (A4).
+          rowData is seeded ONCE; subsequent edits patch nodes via applyTransaction
+          (GRID-09). getRowId is REQUIRED for transaction node-matching (R10).
+          singleClickEdit: status opens on one click. animateRows=false: no layout
+          cost on bulk updates for a data-entry grid. Virtualization stays ON.
+          gridWrapRef: the GRID-13 paste listener attaches here (scoped to grid focus). */}
+      <div
+        ref={gridWrapRef}
+        data-slot="grid-wrap"
+        style={{ height: 600, width: "100%" }}
+      >
         <AgGridReact<UnitRow>
-          rowData={rowData}
+          rowData={initialRowData}
           columnDefs={columnDefs}
           defaultColDef={defaultColDefWithClasses}
           getRowId={(p) => p.data.rowKey}
@@ -713,26 +1050,35 @@ export default function ActualsGrid({
           onGridReady={onGridReady}
           onCellValueChanged={handleCellValueChanged}
           stopEditingWhenCellsLoseFocus
-          // P2-3: enable Excel paste. Text selection lets the user copy out;
-          // processCellFromClipboard sanitizes incoming Indian-format values.
-          enableCellTextSelection
-          processCellFromClipboard={processCellFromClipboard}
-          // P3: per-cell undo/redo (Ctrl+Z / Ctrl+Y) for the last edits.
-          undoRedoCellEditing
-          undoRedoCellEditingLimit={20}
+          singleClickEdit
+          animateRows={false}
         />
       </div>
+
+      {/* GRID-13 paste overflow note — shown when a pasted block had cells outside the
+          editable area (off the right edge or below the last displayed row). Dismissable. */}
+      {pasteNote && (
+        <div
+          data-slot="paste-note"
+          className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800"
+        >
+          <span>{pasteNote}</span>
+          <button
+            onClick={() => setPasteNote(null)}
+            className="ml-4 rounded border border-amber-400 px-3 py-1 text-xs font-medium hover:bg-amber-100"
+            aria-label="Dismiss paste note"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* P3: ONE collapsed conflict summary instead of a banner per row.
           Lists the conflicted SFIDs, points at the highlighted grid rows, and
           offers a single "Reload all" that re-fetches each conflicted row in
           place (preserving every other unsaved edit). The per-row data-slot is
           kept on hidden markers so existing e2e selectors still resolve. */}
-      {(() => {
-        const conflictRows = Array.from(rowMap.values()).filter(
-          (r) => r.fields.__conflict,
-        );
-        if (conflictRows.length === 0) return null;
+      {conflictRows.length > 0 && (() => {
         const sfids = conflictRows
           .map((r) => String(r.plan["sfid"] ?? "").trim())
           .filter((s) => s !== "");
@@ -784,7 +1130,7 @@ export default function ActualsGrid({
       {/* POP/Dealer-Kit multi-item modal (item-list activities) */}
       {popRowKey &&
         (() => {
-          const row = rowMap.get(popRowKey);
+          const row = rowsRef.current.get(popRowKey);
           if (!row) return null;
           return (
             <PopModal
@@ -797,13 +1143,15 @@ export default function ActualsGrid({
           );
         })()}
 
-      {/* Save bar — persists dirty rows, handles conflict results */}
+      {/* Bottom save bar (GRID-12) — sticky bottom-0. Shares the SAME save flow as the
+          top bar via the useSaveExecutions hook (one submit / one pending / one count). */}
       <SaveBar
-        dirtyRows={dirtyRows}
-        activityKey={activityKey}
-        periodId={periodId}
-        onSaveResult={handleSaveResult}
-        items={items}
+        slot="save-bar-bottom"
+        dirtyCount={dirtyCount}
+        pending={pending}
+        lastResult={saveState}
+        onSave={submit}
+        className="sticky bottom-0"
       />
     </div>
   );
@@ -816,11 +1164,8 @@ export default function ActualsGrid({
 // statuses (the reviewer's whole job). Honest metrics: coverage = plan rows
 // with at least one execution; status counts = execution rows grouped by
 // their `status` field. % Done is intentionally framed as "Done out of
-// covered rows" not "out of plan rows" — that avoids overstating progress
-// when many plan rows are entirely unrecorded.
-//
-// Cancelled is wired in already (P2-2 will surface it as a status option;
-// for now the count will read zero until "Cancelled" appears in the enum).
+// active recorded rows" (excludes Cancelled) — that avoids cancelling a
+// dealer dragging the completion number down.
 // ---------------------------------------------------------------------------
 function GridStats({
   rows,

@@ -40,6 +40,7 @@ import { ensureMigrated } from "../db/migrate";
 import {
   _resetExecutionsForTest,
   _resetPlanRowsForTest,
+  insertExceptionPlanRow,
   listByPeriodActivity,
 } from "../db/plan-rows";
 import {
@@ -312,6 +313,63 @@ describe("lib/actions/plans (Zod + auth + mirror semantics)", () => {
     expect(state.error).toMatch(/row \d+/);
     // Nothing should have been written.
     expect(await planRowCount(periodId, "counter-wall")).toBe(0);
+  });
+
+  it("R4 re-upload guard: re-upload {A} after {A,B}+exception X deletes B (plan-upload orphan) but PRESERVES X (exception) and keeps A", async () => {
+    const periodId = await insertPeriod({
+      type: "month",
+      label: "Aug 2026",
+      startDate: "2026-08-01",
+      endDate: "2026-08-31",
+    });
+
+    // 1. Upload a plan with SFIDs {A, B} (both source='plan-upload').
+    const seed = await commitPlanUpload(null, {
+      periodId,
+      activity: "counter-wall",
+      rows: [makeCounterWallRow("SF-A"), makeCounterWallRow("SF-B")],
+    });
+    expect(seed.ok).toBe(true);
+    expect(await planRowCount(periodId, "counter-wall")).toBe(2);
+
+    // 2. Add an off-plan-EXCEPTION row for SFID 'X' (source='exception'), via the same
+    //    DB helper the addOffPlanExecution action uses. `db` doubles as a DbOrTx here.
+    const exceptionId = await insertExceptionPlanRow(db, {
+      periodId,
+      activity: "counter-wall",
+      sfid: "SF-X",
+      region: "West",
+      state: "MH",
+      district: "Pune",
+      taluka: "Haveli",
+      distributor: "ACME",
+      dealer: "Off-plan Dealer X",
+      fields: {},
+      exceptionReason: "Executed off-plan before upload",
+    });
+    expect(exceptionId).toBeGreaterThan(0);
+    expect(await planRowCount(periodId, "counter-wall")).toBe(3);
+
+    // 3. Re-upload a plan with {A} ONLY — both B and X are absent from the upload.
+    const reupload = await commitPlanUpload(null, {
+      periodId,
+      activity: "counter-wall",
+      rows: [makeCounterWallRow("SF-A")],
+    });
+    expect(reupload.ok).toBe(true);
+    if (!reupload.ok) throw new Error("unreachable");
+    // Only B (the plan-upload orphan) is deleted — NOT X (the exception).
+    expect(reupload.deleted).toBe(1);
+
+    // 4. Assert final state directly: A kept, B deleted, X SURVIVES with source='exception'.
+    const rows = await listByPeriodActivity(periodId, "counter-wall");
+    const bySfid = new Map(rows.map((r) => [r.sfid, r]));
+    expect(bySfid.has("SF-A")).toBe(true); // plan row kept
+    expect(bySfid.has("SF-B")).toBe(false); // plan-upload orphan deleted
+    expect(bySfid.has("SF-X")).toBe(true); // exception row PRESERVED (R4)
+    expect(bySfid.get("SF-X")?.source).toBe("exception");
+    expect(bySfid.get("SF-A")?.source).toBe("plan-upload");
+    expect(await planRowCount(periodId, "counter-wall")).toBe(2);
   });
 
   it("auth-rejected: verifySession returns false → throws Unauthorized, nothing written", async () => {

@@ -95,6 +95,21 @@ export type ExecutionRecord = {
 };
 
 // ---------------------------------------------------------------------------
+// Default status (GRID-10 / D3.1-03)
+// ---------------------------------------------------------------------------
+
+/**
+ * The status seeded onto NEW rows (placeholders + "+ add unit" clones). A single symbol
+ * referenced by both injection points so the default can never drift between them.
+ *
+ * "In Progress" is a member of every activity's registry `enumValues`
+ * (["Pending","In Progress","Done"]) — the registry enum stays the editor source of truth;
+ * this constant only seeds the initial value. Existing executions with status IS NULL are
+ * backfilled to the same value by migration 0002 (D3.1-07). NOT a per-activity default (deferred).
+ */
+const DEFAULT_STATUS = "In Progress";
+
+// ---------------------------------------------------------------------------
 // Internal counter for generating unique new: rowKeys
 // ---------------------------------------------------------------------------
 
@@ -155,14 +170,14 @@ export function buildRowModel(
     const prExecs = execsByPlanRow.get(pr.id) ?? [];
 
     if (prExecs.length === 0) {
-      // No executions → one placeholder row (D3-02)
+      // No executions → one placeholder row (D3-02). Seed the default status (GRID-10 / D3.1-03).
       rows.push({
         rowKey: nextNewKey(),
         planRowId: pr.id,
         executionId: null,
         version: 0,
         plan: planContext,
-        fields: {},
+        fields: { status: DEFAULT_STATUS },
         isPlaceholder: true,
         dirty: false,
       });
@@ -214,7 +229,7 @@ export function buildRowModel(
  * The clone:
  *   - carries the SAME planRowId and plan context (dealer, region, sfid, etc.)
  *   - has executionId:null and version:0 (new INSERT path)
- *   - has EMPTY fields (user starts fresh for the new unit)
+ *   - copies NO execution data — only the default status is seeded (GRID-10 / D3.1-03)
  *   - has isPlaceholder:false (it's an intentional new unit, not an auto-filler)
  *   - has a fresh unique rowKey (new:N) so AG Grid tracks it independently
  */
@@ -225,7 +240,7 @@ export function cloneUnitForAdd(row: UnitRow): UnitRow {
     executionId: null,
     version: 0,
     plan: row.plan, // same plan context (read-only reference is fine — plan is never mutated)
-    fields: {},
+    fields: { status: DEFAULT_STATUS },
     isPlaceholder: false,
     dirty: false,
   };

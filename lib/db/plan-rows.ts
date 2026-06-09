@@ -33,6 +33,10 @@ export type PlanRowRecord = {
   dealer: string | null;
   plannedCost: string | null;
   fields: Record<string, unknown>;
+  // COMP-04 (Phase 3.1): provenance column. 'plan-upload' (default) or 'exception'.
+  // listByPeriodActivity does `select()` (all columns), so this flows through automatically
+  // now that the DB column exists (migration 0002). Consumed by Plan 03 (backend) / Plan 05 (pill).
+  source: string;
 };
 
 /** One blocked-dealer row returned by `queryBlockedDealers`. */
@@ -147,6 +151,73 @@ export async function bulkInsertPlanRows(
     inserted += chunk.length;
   }
   return inserted;
+}
+
+/**
+ * Args for `insertExceptionPlanRow` (COMP-04 / Phase 3.1). The off-plan-exception
+ * affordance creates exactly ONE plan_row with `source='exception'` so the off-plan
+ * guard (COMP-01) is never weakened — the execution still FKs to a real plan_row.
+ * `sfid` lives here (plan_rows) and NEVER on executions (which has no sfid column).
+ */
+export type ExceptionPlanRowInsert = {
+  periodId: number;
+  activity: string;
+  sfid: string;
+  region: string | null;
+  state: string | null;
+  district: string | null;
+  taluka: string | null;
+  distributor: string | null;
+  dealer: string | null;
+  plannedCost?: number | null;
+  fields: Record<string, unknown>;
+  exceptionReason: string;
+};
+
+/**
+ * Insert ONE off-plan-exception plan_row and return its id (COMP-04 / D3.1-02).
+ *
+ * Stamps `source='exception'` + `createdVia='actuals-exception'` so the dashboard and a
+ * future re-upload can distinguish it from a normally plan-uploaded row (the R4 re-upload
+ * guard in commitPlanUpload only deletes `source='plan-upload'` orphans).
+ *
+ * MUST be called with the OUTER tx — `addOffPlanExecution` inserts this row FIRST, then
+ * FKs the execution to the returned id, both inside one db.transaction. NEVER opens its
+ * own transaction. If the (period_id, activity, sfid) match key already exists, the insert
+ * raises SQLSTATE 23505 — the caller catches it (isUniqueViolation) and rolls back.
+ *
+ * Numeric-stringify discipline mirrors bulkInsertPlanRows (plannedCost → string | null).
+ */
+export async function insertExceptionPlanRow(
+  tx: DbOrTx,
+  args: ExceptionPlanRowInsert,
+): Promise<number> {
+  const inserted = await tx
+    .insert(planRows)
+    .values({
+      periodId: args.periodId,
+      activity: args.activity,
+      sfid: args.sfid,
+      region: args.region,
+      state: args.state,
+      district: args.district,
+      taluka: args.taluka,
+      distributor: args.distributor,
+      dealer: args.dealer,
+      plannedCost: args.plannedCost == null ? null : String(args.plannedCost),
+      fields: args.fields,
+      source: "exception",
+      exceptionReason: args.exceptionReason,
+      createdVia: "actuals-exception",
+    })
+    .returning();
+
+  const row =
+    Array.isArray(inserted) ? inserted[0] : ((inserted as { rows?: unknown[] }).rows ?? [])[0];
+  if (!row) {
+    throw new Error("insertExceptionPlanRow: failed to get inserted row");
+  }
+  return Number((row as { id: number | string }).id);
 }
 
 /** The mutable patch shape for a single existing plan_row. */

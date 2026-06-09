@@ -3,106 +3,79 @@
 /**
  * SaveBar — the persistent "N unsaved changes / Save" bar (D3-10/11/12).
  *
- * Protocol:
- *   - Shows live unsaved count from the dirty Map (passed as dirtyRows[]).
- *   - Save button calls saveExecutionsBatch with the batch of UnitPatch objects.
- *   - On success: calls onSaveResult so ActualsGrid clears dirty flags + updates versions.
- *   - Conflict rows: flagged in the result.conflicts array → ActualsGrid marks them "reload".
- *   - Shows a transient "Saved" confirmation after a clean flush.
+ * PRESENTATIONAL (GRID-12): this component owns NO save state. The save flow lives in the
+ * `useSaveExecutions` hook in ActualsGrid (ONE useActionState, ONE submit, ONE onResult).
+ * Two instances of this bar (top + bottom) are rendered sharing the SAME
+ * { dirtyCount, pending, lastResult, onSave } — so there is never a double-submit or a
+ * divergent count. Each instance carries a distinct `slot` ("save-bar-top" / "save-bar-bottom")
+ * so e2e selectors can target a specific bar.
  *
- * Security: saveExecutionsBatch sends only planRowId (never sfid). Fields are sent
- * as-is; the server recomputes derived totals and validates with Zod.
+ * Protocol:
+ *   - Shows the live unsaved count (dirtyCount) supplied by the owner.
+ *   - Save button calls onSave (the shared submit).
+ *   - Flashes a transient "Saved" confirmation when lastResult flips to a clean success.
+ *   - Conflict rows are surfaced via the shared lastResult.conflicts count.
+ *
+ * Security: the save path (saveExecutionsBatch, in the hook) sends only planRowId
+ * (never sfid). Fields are sent as-is; the server recomputes derived totals and validates.
  */
 
-import { useActionState, useEffect, useRef, useState } from "react";
-import { saveExecutionsBatch, type SaveBatchState } from "@/lib/actions/executions";
-import { type UnitRow } from "@/lib/actuals/rows";
+import { useEffect, useRef, useState } from "react";
+import { type SaveBatchState } from "@/lib/actions/executions";
 
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
 
+export type SaveBarSlot = "save-bar-top" | "save-bar-bottom";
+
 export type SaveBarProps = {
-  dirtyRows: UnitRow[];
-  activityKey: string;
-  periodId: number;
-  onSaveResult: (result: SaveBatchState) => void;
-  items?: Array<{ id: number; name: string; category: string | null }>;
+  /** Live unsaved-change count (shared across both bars). */
+  dirtyCount: number;
+  /** True while the shared save action is in flight. */
+  pending: boolean;
+  /** The latest save result from the shared useActionState (drives flash + conflicts). */
+  lastResult: SaveBatchState;
+  /** The shared submit — same function for both bars and the Ctrl/Cmd+S shortcut. */
+  onSave: () => void;
+  /** Which bar this is — sets the root data-slot for unambiguous e2e targeting. */
+  slot: SaveBarSlot;
+  /** Extra positioning classes (e.g. "sticky top-0 z-30" vs "sticky bottom-0"). */
+  className?: string;
 };
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
-const INITIAL_STATE: SaveBatchState = { ok: true, savedIds: [], conflicts: [] };
-
 export default function SaveBar({
-  dirtyRows,
-  activityKey,
-  periodId,
-  onSaveResult,
+  dirtyCount,
+  pending,
+  lastResult,
+  onSave,
+  slot,
+  className = "",
 }: SaveBarProps) {
-  const [state, formAction, pending] = useActionState<SaveBatchState, FormData>(
-    async (_prev: SaveBatchState, _formData: FormData) => {
-      // Build UnitPatch[] from the dirty rows.
-      const units = dirtyRows.map((row) => ({
-        rowKey: row.rowKey,
-        planRowId: row.planRowId,
-        executionId: row.executionId,
-        version: row.version,
-        fields: row.fields,
-        isPlaceholder: row.isPlaceholder,
-        // POP/Dealer-Kit kit lines (undefined for non-POP rows → normal insert/update path;
-        // an array → the action routes through savePopKit: one execution + N execution_items).
-        popLines: row.popLines,
-      }));
-
-      return saveExecutionsBatch(undefined, {
-        activity: activityKey,
-        periodId,
-        units,
-      });
-    },
-    INITIAL_STATE,
-  );
-
-  // Track whether we've shown the "saved" flash.
+  // Transient "saved" flash — driven by lastResult flipping to a clean success.
   const [showSaved, setShowSaved] = useState(false);
+  const prevResultRef = useRef<SaveBatchState | null>(null);
 
-  // P2-4: form ref so the Ctrl/Cmd+S shortcut can submit the same action the
-  // Save button triggers (requestSubmit runs validation + the form action).
-  const formRef = useRef<HTMLFormElement>(null);
-
-  const dirtyCount = dirtyRows.length;
-  const conflictCount = "conflicts" in state ? state.conflicts.length : 0;
-
-  // When the action completes, notify the parent and flash "saved" if clean.
   useEffect(() => {
-    if (state === INITIAL_STATE) return;
-    onSaveResult(state);
-    if (state.ok && state.conflicts.length === 0 && state.savedIds.length > 0) {
+    // Only react when lastResult actually changes identity (a save completed).
+    if (lastResult === prevResultRef.current) return;
+    prevResultRef.current = lastResult;
+    if (
+      lastResult.ok &&
+      lastResult.conflicts.length === 0 &&
+      lastResult.savedIds.length > 0
+    ) {
       setShowSaved(true);
       const t = setTimeout(() => setShowSaved(false), 3000);
       return () => clearTimeout(t);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
+  }, [lastResult]);
 
-  // P2-4: Ctrl/Cmd+S saves without reaching for the mouse — the reviewer's
-  // muscle-memory shortcut. Only fires when there's something to save and a
-  // save isn't already in flight; otherwise we let the browser keep its default.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
-        if (dirtyCount > 0 && !pending) {
-          e.preventDefault();
-          formRef.current?.requestSubmit();
-        }
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [dirtyCount, pending]);
+  const conflictCount = lastResult.ok ? lastResult.conflicts.length : 0;
 
   if (dirtyCount === 0 && !showSaved && conflictCount === 0) {
     return null; // Hide bar when nothing is pending
@@ -110,8 +83,8 @@ export default function SaveBar({
 
   return (
     <div
-      data-slot="save-bar"
-      className="sticky bottom-0 flex items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white px-4 py-3 shadow-md"
+      data-slot={slot}
+      className={`flex items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white px-4 py-3 shadow-md ${className}`.trim()}
     >
       <div className="flex items-center gap-3 text-sm">
         {dirtyCount > 0 && (
@@ -132,31 +105,25 @@ export default function SaveBar({
           </span>
         )}
         {showSaved && (
-          <span
-            data-slot="save-confirmation"
-            className="text-emerald-700"
-          >
+          <span data-slot="save-confirmation" className="text-emerald-700">
             Saved successfully
           </span>
         )}
-        {"ok" in state && !state.ok && (
-          <span className="text-red-600">
-            {"error" in state ? (state as { error: string }).error : "Save failed"}
-          </span>
+        {!lastResult.ok && (
+          <span className="text-red-600">{lastResult.error || "Save failed"}</span>
         )}
       </div>
 
-      <form action={formAction} ref={formRef}>
-        <button
-          type="submit"
-          data-slot="save-button"
-          disabled={pending || dirtyCount === 0}
-          title="Save (Ctrl/⌘+S)"
-          className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-40 hover:bg-neutral-800"
-        >
-          {pending ? "Saving…" : "Save"}
-        </button>
-      </form>
+      <button
+        type="button"
+        data-slot="save-button"
+        onClick={onSave}
+        disabled={pending || dirtyCount === 0}
+        title="Save (Ctrl/⌘+S)"
+        className="rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-opacity disabled:opacity-40 hover:bg-neutral-800"
+      >
+        {pending ? "Saving…" : "Save"}
+      </button>
     </div>
   );
 }

@@ -147,18 +147,27 @@ test("edit → Save → reload: persisted value survives a full page reload", as
   await editCell(page, 0, "fields.wallShopNo", "WALL-001");
 
   // Save bar should appear showing at least 1 unsaved change.
-  const saveBar = page.locator('[data-slot="save-bar"]');
+  // GRID-12: two bars now render (top + bottom). Scope to the BOTTOM bar so these
+  // assertions stay unambiguous under Playwright strict mode (the bare save-bar slot
+  // was removed in favour of save-bar-top / save-bar-bottom).
+  const saveBar = page.locator('[data-slot="save-bar-bottom"]');
   await expect(saveBar).toBeVisible({ timeout: 8_000 });
-  const unsavedCount = page.locator('[data-slot="unsaved-count"]');
+  const unsavedCount = page.locator(
+    '[data-slot="save-bar-bottom"] [data-slot="unsaved-count"]',
+  );
   await expect(unsavedCount).toBeVisible();
 
   // Click Save.
-  const saveButton = page.locator('[data-slot="save-button"]');
+  const saveButton = page.locator(
+    '[data-slot="save-bar-bottom"] [data-slot="save-button"]',
+  );
   await expect(saveButton).toBeEnabled({ timeout: 5_000 });
   await saveButton.click();
 
   // Wait for save confirmation.
-  await expect(page.locator('[data-slot="save-confirmation"]')).toBeVisible({
+  await expect(
+    page.locator('[data-slot="save-bar-bottom"] [data-slot="save-confirmation"]'),
+  ).toBeVisible({
     timeout: 15_000,
   });
 
@@ -247,10 +256,15 @@ test("stale-version Save surfaces row-conflict without clobbering; sibling unit 
   await editCell(page, 0, "fields.wallShopNo", "FIRST-SAVE");
 
   // Save — this is a clean save (version 0 → server bumps to 1).
-  const saveButton = page.locator('[data-slot="save-button"]');
+  // GRID-12: scope to the bottom bar (two bars render; bare slot removed).
+  const saveButton = page.locator(
+    '[data-slot="save-bar-bottom"] [data-slot="save-button"]',
+  );
   await expect(saveButton).toBeEnabled({ timeout: 5_000 });
   await saveButton.click();
-  await expect(page.locator('[data-slot="save-confirmation"]')).toBeVisible({
+  await expect(
+    page.locator('[data-slot="save-bar-bottom"] [data-slot="save-confirmation"]'),
+  ).toBeVisible({
     timeout: 15_000,
   });
   // After this: server has SF-A at version=1; grid has SF-A at version=1.
@@ -282,8 +296,12 @@ test("stale-version Save surfaces row-conflict without clobbering; sibling unit 
   await page2.keyboard.press("Tab");
 
   // Save in page2 → version 1→2 on the server.
-  await page2.locator('[data-slot="save-button"]').click();
-  await expect(page2.locator('[data-slot="save-confirmation"]')).toBeVisible({
+  await page2
+    .locator('[data-slot="save-bar-bottom"] [data-slot="save-button"]')
+    .click();
+  await expect(
+    page2.locator('[data-slot="save-bar-bottom"] [data-slot="save-confirmation"]'),
+  ).toBeVisible({
     timeout: 15_000,
   });
   await context2.close();
@@ -296,6 +314,7 @@ test("stale-version Save surfaces row-conflict without clobbering; sibling unit 
   await editCell(page, 1, "fields.wallShopNo", "SIBLING-OK");
 
   // Save — SF-A should conflict; SF-B should succeed.
+  // (saveButton is already scoped to save-bar-bottom above.)
   await expect(saveButton).toBeEnabled({ timeout: 5_000 });
   await saveButton.click();
 
@@ -428,9 +447,13 @@ test("POP kit: add 2 line items → live totals → subtotal rollup → persist"
   await expect(kitCell).toContainText("2 items");
   await expect(kitCell).toContainText("350");
 
-  // Save → confirmation.
-  await page.locator('[data-slot="save-button"]').click();
-  await expect(page.locator('[data-slot="save-confirmation"]')).toBeVisible({
+  // Save → confirmation (GRID-12: scope to the bottom bar — two bars render).
+  await page
+    .locator('[data-slot="save-bar-bottom"] [data-slot="save-button"]')
+    .click();
+  await expect(
+    page.locator('[data-slot="save-bar-bottom"] [data-slot="save-confirmation"]'),
+  ).toBeVisible({
     timeout: 15_000,
   });
 
@@ -471,10 +494,16 @@ test("Dealer Certificate: Status + Date + Cost persist inline (no popup)", async
   await setCellViaApi(page, 0, "fields.issuanceDate", "2026-09-15");
   await setCellViaApi(page, 0, "fields.cost", 1500);
 
-  // Save → confirmation.
-  await expect(page.locator('[data-slot="save-button"]')).toBeEnabled({ timeout: 8_000 });
-  await page.locator('[data-slot="save-button"]').click();
-  await expect(page.locator('[data-slot="save-confirmation"]')).toBeVisible({
+  // Save → confirmation (GRID-12: scope to the bottom bar — two bars render).
+  await expect(
+    page.locator('[data-slot="save-bar-bottom"] [data-slot="save-button"]'),
+  ).toBeEnabled({ timeout: 8_000 });
+  await page
+    .locator('[data-slot="save-bar-bottom"] [data-slot="save-button"]')
+    .click();
+  await expect(
+    page.locator('[data-slot="save-bar-bottom"] [data-slot="save-confirmation"]'),
+  ).toBeVisible({
     timeout: 15_000,
   });
 
@@ -484,4 +513,137 @@ test("Dealer Certificate: Status + Date + Cost persist inline (no popup)", async
   await waitForGrid(page);
   expect((await getCellText(page, 0, "fields.status")).trim()).toContain("Done");
   expect((await getCellText(page, 0, "fields.cost")).trim()).toContain("1500");
+});
+
+// ---------------------------------------------------------------------------
+// Test 6: GRID-12 — two save bars share ONE count; top-bar Save clears both
+// ---------------------------------------------------------------------------
+
+test("GRID-12: top + bottom save bars show the same count; top-bar Save clears both", async ({
+  page,
+}) => {
+  await login(page);
+  await createActivePeriod(page);
+  await uploadCounterWallPlan(page);
+
+  await page.goto("/actuals?activity=counter-wall");
+  await page.waitForLoadState("networkidle");
+  await waitForGrid(page);
+
+  // Make a single edit → both bars must appear sharing ONE dirty count.
+  await editCell(page, 0, "fields.wallShopNo", "WALL-TOP");
+
+  const topBar = page.locator('[data-slot="save-bar-top"]');
+  const bottomBar = page.locator('[data-slot="save-bar-bottom"]');
+  await expect(topBar).toBeVisible({ timeout: 8_000 });
+  await expect(bottomBar).toBeVisible({ timeout: 8_000 });
+
+  // Same unsaved-count text in BOTH bars (single source of truth).
+  const topCount = topBar.locator('[data-slot="unsaved-count"]');
+  const bottomCount = bottomBar.locator('[data-slot="unsaved-count"]');
+  await expect(topCount).toBeVisible();
+  await expect(bottomCount).toBeVisible();
+  const topText = (await topCount.textContent())?.trim();
+  const bottomText = (await bottomCount.textContent())?.trim();
+  expect(topText).toBe("1");
+  expect(bottomText).toBe(topText);
+
+  // Click Save on the TOP bar → BOTH bars clear (no divergence, no double-submit).
+  const topSave = topBar.locator('[data-slot="save-button"]');
+  await expect(topSave).toBeEnabled({ timeout: 5_000 });
+  await topSave.click();
+
+  // The shared save flow flashes "Saved successfully" (assert on the top bar).
+  await expect(topBar.locator('[data-slot="save-confirmation"]')).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // Both counts cleared — dirtyCount === 0 in BOTH bars (the shared state drained once).
+  await expect(topBar.locator('[data-slot="unsaved-count"]')).toHaveCount(0, {
+    timeout: 8_000,
+  });
+  await expect(bottomBar.locator('[data-slot="unsaved-count"]')).toHaveCount(0, {
+    timeout: 8_000,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 7: GRID-13 — synthetic paste-block fills editable cells + marks dirty
+// ---------------------------------------------------------------------------
+
+test("GRID-13: pasted TSV block fills editable fields.* cells across + down and marks rows dirty", async ({
+  page,
+}) => {
+  await login(page);
+  await createActivePeriod(page);
+  await uploadCounterWallPlan(page);
+
+  await page.goto("/actuals?activity=counter-wall");
+  await page.waitForLoadState("networkidle");
+  await waitForGrid(page);
+
+  // Anchor on fields.actualSqft (first editable numeric field for counter-wall). Make it
+  // visible, then set the focused cell via the dev grid API — getFocusedCell() is the
+  // paste anchor, so we must focus a cell the handler can read.
+  await ensureColumnVisible(page, "fields.actualSqft");
+  await page.locator('.ag-row[row-index="0"] [col-id="fields.actualSqft"]').first().click();
+
+  // Synthetic paste: a 2-row × 1-col TSV block. The handler walks displayed rows from the
+  // anchor down and editable fields.* columns from the anchor right. Dispatch the
+  // ClipboardEvent on the gridWrapRef element (data-slot="grid-wrap") — the listener is
+  // attached there, and an event dispatched ON that element reaches its own listener.
+  // (Dispatching on the OUTER [data-slot="actuals-grid"] would NOT bubble DOWN to the
+  // descendant grid-wrap listener — critical note 3.)
+  const result = await page.evaluate(() => {
+    const api = (
+      window as unknown as Record<
+        string,
+        {
+          setFocusedCell?: (r: number, c: string) => void;
+          getFocusedCell?: () => unknown;
+          getDisplayedRowAtIndex?: (
+            i: number,
+          ) => { data?: { fields?: Record<string, unknown> } } | undefined;
+        }
+      >
+    ).__actualsGridApi;
+    if (!api?.setFocusedCell) return { ok: false, reason: "no api" };
+
+    // Focus the anchor cell (row 0, fields.actualSqft) so getFocusedCell() resolves.
+    api.setFocusedCell(0, "fields.actualSqft");
+
+    const target = document.querySelector('[data-slot="grid-wrap"]');
+    if (!target) return { ok: false, reason: "no grid-wrap" };
+
+    const dt = new DataTransfer();
+    // Two rows, one column: row0 → 111, row1 → 222 (down the anchor column).
+    dt.setData("text/plain", "111\n222");
+    const ev = new ClipboardEvent("paste", {
+      clipboardData: dt,
+      bubbles: true,
+      cancelable: true,
+    });
+    target.dispatchEvent(ev);
+
+    // Read back the values the handler wrote into the row fields.
+    const r0 = api.getDisplayedRowAtIndex?.(0)?.data?.fields ?? {};
+    const r1 = api.getDisplayedRowAtIndex?.(1)?.data?.fields ?? {};
+    return {
+      ok: true,
+      r0Sqft: r0.actualSqft,
+      r1Sqft: r1.actualSqft,
+    };
+  });
+
+  expect(result.ok, `paste dispatch failed: ${result.reason ?? ""}`).toBe(true);
+  // The pasted values landed in the editable fields.* cells (down 2 rows).
+  expect(result.r0Sqft).toBe(111);
+  expect(result.r1Sqft).toBe(222);
+
+  // The pasted rows went dirty — the shared save bar shows the unsaved count (2 rows).
+  const bottomCount = page.locator(
+    '[data-slot="save-bar-bottom"] [data-slot="unsaved-count"]',
+  );
+  await expect(bottomCount).toBeVisible({ timeout: 8_000 });
+  await expect(bottomCount).toHaveText("2");
 });

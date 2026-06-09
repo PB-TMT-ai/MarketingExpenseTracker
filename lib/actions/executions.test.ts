@@ -47,9 +47,10 @@ import {
   _resetPlanRowsForTest,
   _findPlanRowIdForTest,
 } from "../db/plan-rows";
+import * as executionsDb from "../db/executions";
 import { _findExecutionForTest, _resetExecutionItemsForTest } from "../db/executions";
 import { _resetPeriodsForTest, insertPeriod } from "../db/periods";
-import { saveExecutionsBatch } from "./executions";
+import { saveExecutionsBatch, addOffPlanExecution } from "./executions";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -145,6 +146,57 @@ async function seedPlanRow(
   const planRowId = await _findPlanRowIdForTest(periodId, activity, sfid);
   if (!planRowId) throw new Error(`seedPlanRow: could not find plan_row for sfid=${sfid}`);
   return { periodId, planRowId };
+}
+
+/** Count plan_rows for (periodId, activity), optionally filtered by source. */
+async function planRowCount(
+  periodId: number,
+  activity: string,
+  source?: string,
+): Promise<number> {
+  const raw =
+    source == null
+      ? await db.execute(
+          sql`select count(*)::int as n from plan_rows where period_id = ${periodId} and activity = ${activity}`,
+        )
+      : await db.execute(
+          sql`select count(*)::int as n from plan_rows where period_id = ${periodId} and activity = ${activity} and source = ${source}`,
+        );
+  const rows = (
+    Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])
+  ) as Array<{ n: number }>;
+  return Number(rows[0]?.n ?? -1);
+}
+
+/** Read a single plan_row's source/exception_reason/created_via by id. */
+async function getPlanRowMeta(id: number): Promise<{
+  source: string;
+  exception_reason: string | null;
+  created_via: string | null;
+} | null> {
+  const raw = await db.execute(
+    sql`select source, exception_reason, created_via from plan_rows where id = ${id}`,
+  );
+  const rows = (
+    Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])
+  ) as Array<{ source: string; exception_reason: string | null; created_via: string | null }>;
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    source: row.source,
+    exception_reason: row.exception_reason,
+    created_via: row.created_via,
+  };
+}
+
+/** Seed a period only (no plan_row) — for off-plan-exception happy-path tests. */
+async function seedPeriod(label = "OffPlan Jul 2026"): Promise<number> {
+  return insertPeriod({
+    type: "month",
+    label,
+    startDate: "2026-07-01",
+    endDate: "2026-07-31",
+  });
 }
 
 /** Build a minimal valid unit patch for the save action. */
@@ -735,5 +787,206 @@ describe("saveExecutionsBatch — _findExecutionForTest helper", () => {
     expect(found).not.toBeNull();
     expect(found?.id).toBe(state.savedIds[0]?.id);
     expect(found?.version).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// addOffPlanExecution — COMP-04 off-plan-exception backend (Phase 3.1)
+// ---------------------------------------------------------------------------
+
+describe("addOffPlanExecution — happy path (exception plan_row + execution, one tx)", () => {
+  it("measurement activity (counter-wall): inserts source='exception' plan_row + execution, applies server calc", async () => {
+    const periodId = await seedPeriod();
+
+    // No plan_row pre-exists for NEW-CW — this is a genuine off-plan SFID.
+    const state = await addOffPlanExecution({
+      periodId,
+      activity: "counter-wall",
+      sfid: "NEW-CW-1",
+      dealer: "Off-plan Dealer A",
+      region: "West",
+      state: "MH",
+      exceptionReason: "Vendor executed before plan was uploaded",
+      fields: {
+        status: "In Progress",
+        actualSqft: "10",
+        perUnitCost: "100",
+        // Client sends a LYING totalCost — server must recompute to 10 × 100 = 1000.
+        totalCost: 99999,
+      },
+    });
+
+    expect(state.ok).toBe(true);
+    if (!state.ok) throw new Error("unreachable");
+    expect(state.planRowId).toBeGreaterThan(0);
+    expect(state.executionId).toBeGreaterThan(0);
+
+    // The plan_row was stamped as an exception (audit columns set).
+    const meta = await getPlanRowMeta(state.planRowId);
+    expect(meta?.source).toBe("exception");
+    expect(meta?.created_via).toBe("actuals-exception");
+    expect(meta?.exception_reason).toBe("Vendor executed before plan was uploaded");
+
+    // Exactly ONE execution FK'd to the new plan_row.
+    expect(await executionCount(state.planRowId)).toBe(1);
+
+    // Server trust-recompute: totalCost = 10 × 100 = 1000 (NOT the lying 99999).
+    const execRow = await getExecution(state.executionId);
+    expect(execRow?.status).toBe("In Progress");
+    expect(Number(execRow?.total_cost)).toBe(1000);
+
+    // Structural off-plan guard: executions row has NO sfid column.
+    const raw = await db.execute(
+      sql`select * from executions where id = ${state.executionId}`,
+    );
+    const rows = (
+      Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])
+    ) as Array<Record<string, unknown>>;
+    expect(Object.keys(rows[0] ?? {})).not.toContain("sfid");
+  });
+
+  it("status-only activity (dealer-certificate): registry-driven fields, exception row + execution committed", async () => {
+    const periodId = await seedPeriod();
+
+    const state = await addOffPlanExecution({
+      periodId,
+      activity: "dealer-certificate",
+      sfid: "NEW-DC-1",
+      dealer: "Off-plan Dealer B",
+      exceptionReason: "Certificate issued off-plan",
+      fields: {
+        status: "Done",
+        cost: "500",
+      },
+    });
+
+    expect(state.ok).toBe(true);
+    if (!state.ok) throw new Error("unreachable");
+
+    const meta = await getPlanRowMeta(state.planRowId);
+    expect(meta?.source).toBe("exception");
+    expect(await executionCount(state.planRowId)).toBe(1);
+
+    const execRow = await getExecution(state.executionId);
+    expect(execRow?.status).toBe("Done");
+  });
+});
+
+describe("addOffPlanExecution — dupe-SFID 23505 (clean {ok:false}, rolls back FIRST insert)", () => {
+  it("an exception on an SFID already in the plan returns the dupe message; nothing persists", async () => {
+    const periodId = await seedPeriod();
+
+    // Seed an EXISTING plan-uploaded row for SFID 'DUP-1'.
+    await db.execute(
+      sql`insert into plan_rows (period_id, activity, sfid, fields, source)
+          values (${periodId}, 'counter-wall', 'DUP-1', '{}', 'plan-upload')`,
+    );
+    const planRowsBefore = await planRowCount(periodId, "counter-wall");
+    expect(planRowsBefore).toBe(1);
+
+    // File an exception for the SAME (period, activity, sfid) → 23505 on the plan_row insert.
+    const state = await addOffPlanExecution({
+      periodId,
+      activity: "counter-wall",
+      sfid: "DUP-1",
+      dealer: "Dealer dup",
+      exceptionReason: "Should be rejected as a duplicate",
+      fields: { status: "In Progress" },
+    });
+
+    expect(state.ok).toBe(false);
+    if (state.ok) throw new Error("unreachable");
+    expect(state.error).toMatch(/already exists/i);
+    expect(state.error).toMatch(/add unit/i);
+
+    // The tx rolled back on the FIRST insert: no new plan_row, no execution anywhere.
+    expect(await planRowCount(periodId, "counter-wall")).toBe(1);
+    const execRaw = await db.execute(sql`select count(*)::int as n from executions`);
+    const execRows = (
+      Array.isArray(execRaw) ? execRaw : ((execRaw as { rows?: unknown[] }).rows ?? [])
+    ) as Array<{ n: number }>;
+    expect(Number(execRows[0]?.n ?? -1)).toBe(0);
+  });
+});
+
+describe("addOffPlanExecution — tx atomicity via forced EXECUTION-insert failure (SECOND insert)", () => {
+  it("a fresh non-dupe SFID whose execution insert throws rolls back the plan_row insert too", async () => {
+    const periodId = await seedPeriod();
+
+    // Force the SECOND insert (the execution) to fail on a FRESH, non-duplicate SFID —
+    // so the plan_row insert (FIRST) would succeed on its own. This proves atomicity for
+    // the execution leg, distinct from the dupe-SFID case which fails on the FIRST insert.
+    const spy = vi
+      .spyOn(executionsDb, "insertExecution")
+      .mockRejectedValueOnce(new Error("forced execution insert failure"));
+
+    try {
+      await expect(
+        addOffPlanExecution({
+          periodId,
+          activity: "counter-wall",
+          sfid: "FRESH-ATOMIC-1", // never seeded → plan_row insert would succeed alone
+          dealer: "Dealer atomic",
+          exceptionReason: "Atomicity probe",
+          fields: { status: "In Progress" },
+        }),
+      ).rejects.toThrow(/forced execution insert failure/);
+    } finally {
+      spy.mockRestore();
+    }
+
+    // Both-or-neither: the plan_row insert rolled back when the execution insert threw.
+    expect(await planRowCount(periodId, "counter-wall")).toBe(0);
+    const execRaw = await db.execute(sql`select count(*)::int as n from executions`);
+    const execRows = (
+      Array.isArray(execRaw) ? execRaw : ((execRaw as { rows?: unknown[] }).rows ?? [])
+    ) as Array<{ n: number }>;
+    expect(Number(execRows[0]?.n ?? -1)).toBe(0);
+  });
+});
+
+describe("addOffPlanExecution — auth-rejected (boundary before any DB touch)", () => {
+  it("verifySession returns false → throws Unauthorized, nothing persists", async () => {
+    const periodId = await seedPeriod();
+
+    verifySessionMock.mockImplementationOnce(async () => false);
+
+    await expect(
+      addOffPlanExecution({
+        periodId,
+        activity: "counter-wall",
+        sfid: "AUTH-X",
+        dealer: "Dealer auth",
+        exceptionReason: "Should never run",
+        fields: { status: "In Progress" },
+      }),
+    ).rejects.toThrow(/Unauthorized/);
+
+    // No plan_row, no execution written.
+    expect(await planRowCount(periodId, "counter-wall")).toBe(0);
+    const execRaw = await db.execute(sql`select count(*)::int as n from executions`);
+    const execRows = (
+      Array.isArray(execRaw) ? execRaw : ((execRaw as { rows?: unknown[] }).rows ?? [])
+    ) as Array<{ n: number }>;
+    expect(Number(execRows[0]?.n ?? -1)).toBe(0);
+  });
+
+  it("missing reason (empty string) → ok:false with a reason-required message; nothing persists", async () => {
+    const periodId = await seedPeriod();
+
+    const state = await addOffPlanExecution({
+      periodId,
+      activity: "counter-wall",
+      sfid: "NO-REASON-1",
+      dealer: "Dealer no-reason",
+      exceptionReason: "", // empty → Zod min(1) rejects
+      fields: { status: "In Progress" },
+    });
+
+    expect(state.ok).toBe(false);
+    if (state.ok) throw new Error("unreachable");
+    expect(state.error).toMatch(/reason/i);
+
+    expect(await planRowCount(periodId, "counter-wall")).toBe(0);
   });
 });

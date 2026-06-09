@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Phase 3 (Actuals Grid) COMPLETE — 5/5 plans; GRID-01..08 delivered; 195 unit + 5 e2e green
-last_updated: "2026-06-06T07:57:01.972Z"
-last_activity: 2026-06-06
+status: executing
+stopped_at: "Phase 3.1 Plan 03 COMPLETE — COMP-04 off-plan-exception BACKEND. addOffPlanExecution (requireSession + Zod reason-required + ONE db.transaction: insertExceptionPlanRow source='exception' -> applyServerCalc -> insertExecution FK'd to it) + isUniqueViolation(23505) clean dupe message (R3) + R4 re-upload guard (commitPlanUpload merge-delete scoped to source='plan-upload'; exception rows survive, regression test proves it). promoteExecutionColumns shared helper extracted. tsc --noEmit clean; executions.test.ts + plans.test.ts 31/31 green (--no-file-parallelism). Off-plan guard structurally intact (executions has no sfid column). Next: 03_1-04 (GRID-12/13) then 03_1-05 (COMP-04 frontend: modal + pill + e2e — consumes addOffPlanExecution/AddOffPlanState)."
+last_updated: "2026-06-08T19:13:06.023Z"
+last_activity: 2026-06-08 -- Phase 04 execution started
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 3
-  total_plans: 13
-  completed_plans: 13
-  percent: 60
+  total_plans: 22
+  completed_plans: 16
+  percent: 50
 ---
 
 # Project State
@@ -21,24 +21,26 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-04)
 
 **Core value:** Spend stays inside the plan, and execution progress is always visible — only planned SFIDs can receive actuals, and "% of plan executed" is the headline metric.
-**Current focus:** Phase 2 — plan upload & periods
+**Current focus:** Phase 04 — compliance-dashboard
 
 ## Current Position
 
-Phase: 3 (in progress)
-Plan: 03-04 DONE
-Status: Phase 3 Wave 3 complete — /actuals grid shipped end-to-end (page + AG Grid + filter bar + save bar + e2e); 03-05 (POP modal + Dealer-Certificate polish) next
-Last activity: 2026-06-06
+Phase: 04 (compliance-dashboard) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 04
+Last activity: 2026-06-08 -- Phase 04 execution started
 
-Phase 3 Wave structure:
+Phase 3 (Actuals Grid) — COMPLETE 5/5 (03-01..03-05).
 
-- Wave 0: 03-01 (AG Grid spike — GO verdict) — DONE
-- Wave 2: 03-02 (pure lib/actuals/* core) — DONE
-- Wave 2: 03-03 (executions data layer + Server Action) — DONE
-- Wave 3: 03-04 (React ActualsGrid component — /actuals route, filter bar, save bar, e2e) — DONE
-- Wave 4: 03-05 (POP modal + Dealer-Certificate polish — depends on 03-04) — TODO
+Phase 3.1 Wave structure:
 
-Progress: [████████░░] 80% (4/5 Phase 3 plans done)
+- Wave 1: 03_1-01 (migration 0002 + default status + Done-lock regression — GRID-10, GRID-11) — DONE
+- Wave 1: 03_1-02 (GRID-09 hot-path perf refactor) — DONE
+- Wave 2: 03_1-03 (COMP-04 backend: addOffPlanExecution + re-upload guard) — DONE
+- Wave 2: 03_1-04 (GRID-12 top+bottom save bar + GRID-13 paste-block) — TODO
+- Wave 3: 03_1-05 (COMP-04 frontend: off-plan modal + pill + e2e) — TODO
+
+Progress: [██████░░░░] 60% (3/5 Phase 3.1 plans done)
 
 ## Performance Metrics
 
@@ -73,6 +75,8 @@ Progress: [████████░░] 80% (4/5 Phase 3 plans done)
 | Phase 03 P02 | 16 min | 3 tasks | 13 files |
 | Phase 03 P03 | 12 min | 3 tasks | 4 files |
 | Phase 03 P04 | 30 min | 3 tasks | 9 files |
+| Phase 03_1 P01 | 21 min | 3 tasks | 9 files |
+| Phase 03_1 P03 | 10 min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -99,6 +103,15 @@ Recent decisions affecting current work:
 - [03-04]: SaveBar uses useActionState with an inline async wrapper (not a direct Server Action reference) to capture the current dirtyRows closure at click time.
 - [03-04]: window.__actualsGridApi exposed in dev mode for e2e column-virtualization (ensureColumnVisible); production-gated by NODE_ENV check.
 - [03-04]: Conflict rows marked via __conflict flag in row.fields; rendered as banners outside the AG Grid (data-slot=row-conflict); reloads full page to fetch server state.
+- [03_1-01]: D3.1-00/R1 reconciliation re-confirmed at execution start — ZERO source hits for resolveEditable / ==='Done' / metaKey / ctrlKey in lib/ + app/. No lock-on-Done exists; GRID-11 shipped as a regression guard (typeof editable === 'boolean'), nothing removed.
+- [03_1-01]: Migration 0002 owns BOTH the COMP-04 plan_rows DDL (source/exception_reason/created_via/created_at + source CHECK) AND the GRID-10 status backfill DML in ONE file — drizzle-kit generate emits DDL only, so the UPDATE was hand-appended after a --> statement-breakpoint (forward-only, idempotent). Downstream plans must NOT generate competing migrations against this DDL.
+- [03_1-01]: executions.status kept nullable with NO Postgres DB default — app (buildRowModel/cloneUnitForAdd via DEFAULT_STATUS const) is the single source of truth for new-row defaults (D3.1-03); backfill is a one-time data correction.
+- [03_1-01]: source modeled as text + CHECK ('plan-upload','exception'), NOT pgEnum — mirrors the status precedent; adding a future source value stays a one-line CHECK edit.
+- [03_1-03]: addOffPlanExecution inserts the exception plan_row FIRST (with sfid) then FKs the execution to its id, both in ONE db.transaction — the off-plan guard (COMP-01) is never weakened: sfid is written ONLY to plan_rows, executions still has no sfid column.
+- [03_1-03]: isUniqueViolation(23505) is a sibling helper to plans.ts isFkRestrictError (which explicitly does NOT cover 23505); dupe-SFID on the exception path returns a clean {ok:false} message ("use + add unit"), never a 500 (R3). Duck-typed on err.cause?.code ?? err.code for PGlite/postgres-js parity.
+- [03_1-03]: R4 cross-phase guard — commitPlanUpload's merge-delete is scoped to source='plan-upload' (snapshot now SELECTs source), so a plan re-upload never deletes/FK-blocks source='exception' rows (D3.1-02). Regression test proves exception X survives re-upload while plan-upload orphan B is deleted.
+- [03_1-03]: addOffPlanExecution signature is single-arg (input: unknown) returning AddOffPlanState, NOT the (prevState, input) useActionState shape — Plan 05's modal calls it directly. No createdBy (single shared password, D3.1-08) — deferred to a future auth phase.
+- [03_1-03]: promoteExecutionColumns extracted as a shared helper so saveExecutionsBatch and addOffPlanExecution use ONE authoritative numeric/status split (Pitfall 9 — no calc-path drift).
 
 ### Pending Todos
 
@@ -125,9 +138,10 @@ Items acknowledged and carried forward from previous milestone close:
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
 | Test-infra | DEF-02-01-01 — PGlite WASM Aborted in periods.test.ts + items.test.ts | RESOLVED (5213277) | 2026-06-05 / Plan 02-01 |
+| Test-infra | DEF-03_1-01-01 — vitest file-parallelism vs PGlite single-connection: `npm test` (parallel) times out DB-backed suites (incl. untouched plans.test.ts); `--no-file-parallelism` is green (14 files / 202 tests). Recommend pinning `test.fileParallelism:false` in vitest.config.ts. | OPEN | 2026-06-08 / Plan 03_1-01 |
 
 ## Session Continuity
 
-Last session: 2026-06-06T07:57:01.941Z
-Stopped at: Phase 3 (Actuals Grid) COMPLETE — 5/5 plans; GRID-01..08 delivered; 195 unit + 5 e2e green
+Last session: 2026-06-08T18:21:48Z
+Stopped at: Phase 3.1 Plan 03 COMPLETE — COMP-04 off-plan-exception BACKEND. addOffPlanExecution (requireSession + Zod reason-required + ONE db.transaction: insertExceptionPlanRow source='exception' -> applyServerCalc -> insertExecution FK'd to it) + isUniqueViolation(23505) clean dupe message (R3) + R4 re-upload guard (commitPlanUpload merge-delete scoped to source='plan-upload'; exception rows survive, regression test proves it). promoteExecutionColumns shared helper extracted. tsc --noEmit clean; executions.test.ts + plans.test.ts 31/31 green (--no-file-parallelism). Off-plan guard structurally intact (executions has no sfid column). Next: 03_1-04 (GRID-12/13) then 03_1-05 (COMP-04 frontend: modal + pill + e2e — consumes addOffPlanExecution/AddOffPlanState).
 Resume file: 

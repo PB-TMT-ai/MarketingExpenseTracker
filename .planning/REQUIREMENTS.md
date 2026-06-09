@@ -43,12 +43,18 @@ Requirements for the initial release. Each maps to a roadmap phase.
 - [x] **GRID-06**: User can record POP / dealer-kit executions as multiple line items via a popup (item, qty, rate → total), rolled up to the dealer row
 - [x] **GRID-07**: Edits are saved reliably (batched, with a clear saved/dirty indicator) and the grid stays responsive at large row counts
 - [x] **GRID-08**: Dealer Certificate entry captures issuance status, date, and cost
+- [x] **GRID-09**: Cell-input responsiveness in the actuals grid is no longer perceptibly laggy — edits land in-place without a full re-render on each keystroke, derived state (rowData, dirtyRows, external-filter triggers) is memoised, and a baseline profile proves the improvement (Phase 3.1)
+- [x] **GRID-10**: Status defaults to "In Progress" for new placeholder rows and "+ add unit" clones; a one-time backfill sets `status = 'In Progress'` for executions where status IS NULL (Phase 3.1)
+- [x] **GRID-11**: Done-row edits are unlocked — the P3 lock-on-Done is removed and every cell on a Done execution is editable like any other row (Phase 3.1)
+- [x] **GRID-12**: The Save control is reachable from the top of the grid as well as the bottom — a sticky save bar at the top mirrors the existing bottom save bar (same dirty count, same action) so save is always in reach on long grids (Phase 3.1)
+- [x] **GRID-13**: User can paste a block of cells copied from Excel/Sheets into the grid — pasting at a selected cell fills across columns and down rows, writing to multiple editable cells at once (custom clipboard handler; AG Grid Community has no built-in range paste). Read-only plan cells and derived/override cells are respected; pasted rows become dirty and save through the normal batch path (Phase 3.1)
 
 ### Compliance
 
 - [x] **COMP-01**: The system structurally prevents recording an actual against an SFID not present in the plan (off-plan guard enforced at the database level)
 - [x] **COMP-02**: Off-plan rows from an actuals import are listed so the user can see what was rejected and why
 - [ ] **COMP-03**: System computes "% of plan executed" (completeness) for the active period, per activity and per filter scope
+- [x] **COMP-04**: User can record an "off-plan exception" execution (a dealer painted that wasn't in the uploaded plan) via a deliberate, audited affordance that creates ONE plan_row marked `source = 'exception'` plus the execution in a single transaction; bulk plan-upload off-plan rejection (COMP-01/COMP-02) is unchanged; exception rows are distinguishable from plan-uploaded rows for later dashboard reporting (Phase 3.1)
 
 ### Dashboard
 
@@ -56,6 +62,9 @@ Requirements for the initial release. Each maps to a roadmap phase.
 - [ ] **DASH-02**: Dashboard breaks down execution and spend by activity and by region
 - [ ] **DASH-03**: Dashboard shows planned budget vs actual spend
 - [ ] **DASH-04**: Dashboard respects the active period and the Region/State/Distributor filters
+- [ ] **DASH-05**: Dashboard surfaces a distinct **Cancelled** counter count alongside Planned / Executed / Pending; Cancelled rows are excluded from the "% executed" denominator (consistent with `TERMINAL_STATUSES` in `lib/activities/status.ts`)
+- [ ] **DASH-06**: Within the active period the dashboard shows a week-wise trend of planned vs executed vs cancelled counters and weekly actual spend, bucketed by `executions.executionDate`; a standalone rolling "recent N weeks" view is selectable independently of the active period
+- [ ] **DASH-07**: User can drill Zone (= `plan_rows.region`) → State → District → Taluka; each level shows planned / executed / cancelled counter counts and planned-vs-actual expense for the rows below it, reusing the cascade utility in `lib/actuals/filter.ts`
 
 ### Export
 
@@ -117,18 +126,27 @@ Which phases cover which requirements. Populated during roadmap creation.
 | GRID-06 | Phase 3 — Actuals Grid | Complete |
 | GRID-07 | Phase 3 — Actuals Grid | Complete |
 | GRID-08 | Phase 3 — Actuals Grid | Complete |
+| GRID-09 | Phase 3.1 — Actuals Grid Refinements | Complete |
+| GRID-10 | Phase 3.1 — Actuals Grid Refinements | Complete |
+| GRID-11 | Phase 3.1 — Actuals Grid Refinements | Complete |
+| GRID-12 | Phase 3.1 — Actuals Grid Refinements | Complete |
+| GRID-13 | Phase 3.1 — Actuals Grid Refinements | Complete |
+| COMP-04 | Phase 3.1 — Actuals Grid Refinements | Complete |
 | COMP-03 | Phase 4 — Compliance & Dashboard | Pending |
 | DASH-01 | Phase 4 — Compliance & Dashboard | Pending |
 | DASH-02 | Phase 4 — Compliance & Dashboard | Pending |
 | DASH-03 | Phase 4 — Compliance & Dashboard | Pending |
 | DASH-04 | Phase 4 — Compliance & Dashboard | Pending |
+| DASH-05 | Phase 4 — Compliance & Dashboard | Pending |
+| DASH-06 | Phase 4 — Compliance & Dashboard | Pending |
+| DASH-07 | Phase 4 — Compliance & Dashboard | Pending |
 | EXPT-01 | Phase 5 — Excel Export | Pending |
 
 **Coverage:**
-- v1 requirements: 30 total
-- Mapped to phases: 30
+- v1 requirements: 36 total
+- Mapped to phases: 36
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-06-04*
-*Last updated: 2026-06-04 after roadmap creation (traceability populated, 30/30 mapped)*
+*Last updated: 2026-06-08 — Phase 3.1 inserted; GRID-09/10/11/12/13 and COMP-04 added (36 total).*

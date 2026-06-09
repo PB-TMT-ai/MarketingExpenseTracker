@@ -167,8 +167,12 @@ export async function commitPlanUpload(
   try {
     const result = await db.transaction(async (tx) => {
       // 1. Snapshot existing rows for (periodId, activity).
+      // R4 GUARD (Phase 3.1 / COMP-04 — cross-phase edit to this Phase-2 file): also select
+      // `source` so the delete branch below can EXCLUDE off-plan-exception rows. An exception
+      // SFID is by definition never in a plan upload, so without this scope a re-upload would
+      // delete (or FK-block) deliberately-created exception rows, violating D3.1-02.
       const existing = await tx
-        .select({ id: planRows.id, sfid: planRows.sfid })
+        .select({ id: planRows.id, sfid: planRows.sfid, source: planRows.source })
         .from(planRows)
         .where(and(eq(planRows.periodId, periodId), eq(planRows.activity, activity)));
       const bySfid = new Map(existing.map((r) => [r.sfid, r.id]));
@@ -195,8 +199,12 @@ export async function commitPlanUpload(
       // Order is insert → update → delete because delete is the only recoverable
       // failure path; doing it last means the catch knows the failure is delete-related
       // (Common-Pitfalls D).
+      // R4 GUARD (Phase 3.1 / COMP-04): only delete orphaned PLAN-UPLOADED rows. Rows with
+      // source='exception' (off-plan-exception affordance) are NEVER in an upload, so they
+      // must SURVIVE a re-upload (D3.1-02). Without the `source === 'plan-upload'` filter a
+      // re-upload would delete them (or fire a spurious FK-restrict "blocked dealer").
       const toDeleteIds = existing
-        .filter((r) => !incomingSet.has(r.sfid))
+        .filter((r) => !incomingSet.has(r.sfid) && r.source === "plan-upload")
         .map((r) => r.id);
       let deleted = 0;
       if (toDeleteIds.length > 0) {

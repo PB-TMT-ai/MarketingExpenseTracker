@@ -16,6 +16,7 @@
     "items:smoke": "tsx lib/db/__smoke__/item-master.ts",
     "plan-upload:smoke": "tsx lib/db/__smoke__/plan-upload.ts",
     "executions:smoke": "tsx lib/db/__smoke__/executions.ts",
+    "perf:seed": "tsx lib/db/__smoke__/perf-seed.ts",
     "fixtures:build": "tsx e2e/fixtures/build-fixtures.ts",
     "test": "vitest run",
     "e2e": "playwright test"
