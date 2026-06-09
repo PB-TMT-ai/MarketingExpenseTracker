@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 3.1 Plan 03 COMPLETE — COMP-04 off-plan-exception BACKEND. addOffPlanExecution (requireSession + Zod reason-required + ONE db.transaction: insertExceptionPlanRow source='exception' -> applyServerCalc -> insertExecution FK'd to it) + isUniqueViolation(23505) clean dupe message (R3) + R4 re-upload guard (commitPlanUpload merge-delete scoped to source='plan-upload'; exception rows survive, regression test proves it). promoteExecutionColumns shared helper extracted. tsc --noEmit clean; executions.test.ts + plans.test.ts 31/31 green (--no-file-parallelism). Off-plan guard structurally intact (executions has no sfid column). Next: 03_1-04 (GRID-12/13) then 03_1-05 (COMP-04 frontend: modal + pill + e2e — consumes addOffPlanExecution/AddOffPlanState)."
-last_updated: "2026-06-08T19:13:06.023Z"
-last_activity: 2026-06-08 -- Phase 04 execution started
+stopped_at: "Phase 04 COMPLETE (4/4 plans). Plan 04-04 shipped DASH-06 + completed DASH-07: weekly execution-trend chart (Recharts stacked AreaChart, ISO-week Cancelled/Executed/Pending), weekly spend chart (actual ₹ line + flat planned reference line per Open Question #4 option c), rolling-N toggle (Period/4w/8w/12w -> ?mode=rolling&weeks=N, server clamps {4,8,12}), and Zone->State->District->Taluka native-<details> drill tree with upward-aggregating metrics, fed by new pure lib/compliance/tree.ts buildGeoTree(GeoRow[]). Playwright e2e/dashboard.spec.ts 4/4 green (DASH-01/04/06/07); buildGeoTree 8/8 unit; tsc clean. Task 4 browser-verify (gate=blocking) APPROVED: 7 Recharts SVGs no console errors, region filter narrows StatStrip+charts+tree, North plan 8 = StateA 4 + StateB 4, D-03/D-04 asymmetry live (%Exec 100%=12/(16-4) AND %Canc 25%=4/16), actual ₹19,500. All Phase 4 requirements (COMP-03, DASH-01..07) Complete. Next: Phase 4 verification, then Phase 5 (Excel Export)."
+last_updated: "2026-06-09T12:24:00.000Z"
+last_activity: 2026-06-09 -- Phase 04 COMPLETE (4/4 plans; DASH-06 shipped, DASH-07 done)
 progress:
   total_phases: 6
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 22
-  completed_plans: 16
-  percent: 50
+  completed_plans: 19
+  percent: 59
 ---
 
 # Project State
@@ -25,10 +25,17 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 
 ## Current Position
 
-Phase: 04 (compliance-dashboard) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 04
-Last activity: 2026-06-08 -- Phase 04 execution started
+Phase: 04 (compliance-dashboard) — COMPLETE (4/4 plans)
+Plan: 4 of 4 (done)
+Status: Phase 04 COMPLETE — all waves done. Next action: Phase 4 verification, then Phase 5 (Excel Export).
+Last activity: 2026-06-09 -- Phase 04 COMPLETE (DASH-06 shipped, DASH-07 done)
+
+Phase 04 Wave structure:
+
+- Wave 1: 04-01 (status registry + computeCompleteness — COMP-03, DASH-05) — DONE
+- Wave 1: 04-02 (lib/db/dashboard.ts aggregators + PGlite tests — DASH-01..07) — DONE
+- Wave 2: 04-03 (/dashboard RSC + StatStrip/ByActivity/ByRegion/Exception + FilterBar + redirect + Recharts install — DASH-01..05, DASH-07) — DONE
+- Wave 3: 04-04 (Recharts weekly trend + spend charts + rolling-N + Zone-Taluka drill tree + e2e — DASH-06, DASH-07) — DONE
 
 Phase 3 (Actuals Grid) — COMPLETE 5/5 (03-01..03-05).
 
@@ -77,6 +84,8 @@ Progress: [██████░░░░] 60% (3/5 Phase 3.1 plans done)
 | Phase 03 P04 | 30 min | 3 tasks | 9 files |
 | Phase 03_1 P01 | 21 min | 3 tasks | 9 files |
 | Phase 03_1 P03 | 10 min | 3 tasks | 5 files |
+| Phase 04 P03 | 55 min | 4 tasks | 12 files |
+| Phase 04 P04 | 48 min | 4 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -112,6 +121,15 @@ Recent decisions affecting current work:
 - [03_1-03]: R4 cross-phase guard — commitPlanUpload's merge-delete is scoped to source='plan-upload' (snapshot now SELECTs source), so a plan re-upload never deletes/FK-blocks source='exception' rows (D3.1-02). Regression test proves exception X survives re-upload while plan-upload orphan B is deleted.
 - [03_1-03]: addOffPlanExecution signature is single-arg (input: unknown) returning AddOffPlanState, NOT the (prevState, input) useActionState shape — Plan 05's modal calls it directly. No createdBy (single shared password, D3.1-08) — deferred to a future auth phase.
 - [03_1-03]: promoteExecutionColumns extracted as a shared helper so saveExecutionsBatch and addOffPlanExecution use ONE authoritative numeric/status split (Pitfall 9 — no calc-path drift).
+- [04-03]: Recharts ^3.2.0 installed via npm (npm-safe, unlike xlsx) with overrides.react-is=$react for the React 19 peer-dep fix (Recharts issue #4558); --legacy-peer-deps explicitly NOT used.
+- [04-03]: Dashboard FilterBar omits the Status facet entirely (D-17) — the dashboard SHOWS status breakdowns so status faceting is circular; parseDashboardFilters silently strips ?status=... (verified live: ?status=Done ignored, stats unchanged).
+- [04-03]: URL is the single source of truth for dashboard filter state — no useState lift; router.replace(scroll:false) on each facet change. Cascade reuses optionsFor from lib/actuals/filter (D-11, not the FilterBar component).
+- [04-03]: Dashboard cards are pure RSC presentation — each receives its pre-aggregated slice as a typed prop; zero DB/SQL access inside card components. Every number flows through lib/db/dashboard (04-02) -> computeCompleteness (04-01).
+- [04-03]: % Executed and % Cancelled use ASYMMETRIC denominators (D-04): executed/(planned-cancelled) vs cancelled/planned. Verified live (1/(1-0)=100.0%, 0/(2-0)=0.0%); contrast on a single dataset blocked only by AG-Grid headless-edit limitation, math covered by completeness.test.ts.
+- [04-03]: Plan-04-04 placeholder slots (weekly-trend-chart, geo-drill-tree) pre-wired with weekly={weekly} and rows={byGeo} props so next-plan chart/tree islands plug in with no further server work.
+- [04-04]: Open Question #4 resolved option (c) — weekly TREND chart shows recorded executions only (no fabricated planned baseline; honest caption); weekly SPEND chart draws planned ₹ as a single flat reference line (period planned ₹ / N weeks) with a disclosure caption that plan rows carry no per-week cadence.
+- [04-04]: lib/compliance/tree.ts buildGeoTree is a NEW pure module (RESEARCH Pattern 4 option a), NOT a GeoRow→UnitRow shoehorn of optionsFor — single O(N) Map pass, alphabetical sibling sort, '(unassigned)' for empty levels; metrics sum upward at every level (parent === Σ children), the literal mechanism behind DASH-07 #7. import type GeoRow only (no runtime dep); aggregateByGeo return shape consumed directly with zero render-time recompute.
+- [04-04]: Geo drill tree kept 'use client' despite native <details> working server-side — preserves aria-expanded / future inline-edit upgrade path and straightforward prop drilling.
 
 ### Pending Todos
 
@@ -142,6 +160,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-08T18:21:48Z
-Stopped at: Phase 3.1 Plan 03 COMPLETE — COMP-04 off-plan-exception BACKEND. addOffPlanExecution (requireSession + Zod reason-required + ONE db.transaction: insertExceptionPlanRow source='exception' -> applyServerCalc -> insertExecution FK'd to it) + isUniqueViolation(23505) clean dupe message (R3) + R4 re-upload guard (commitPlanUpload merge-delete scoped to source='plan-upload'; exception rows survive, regression test proves it). promoteExecutionColumns shared helper extracted. tsc --noEmit clean; executions.test.ts + plans.test.ts 31/31 green (--no-file-parallelism). Off-plan guard structurally intact (executions has no sfid column). Next: 03_1-04 (GRID-12/13) then 03_1-05 (COMP-04 frontend: modal + pill + e2e — consumes addOffPlanExecution/AddOffPlanState).
+Last session: 2026-06-09T12:24:00Z
+Stopped at: Phase 04 COMPLETE (4/4 plans). Plan 04-04 closed — DASH-06 shipped + DASH-07 completed: Recharts weekly execution-trend chart + weekly spend chart (actual ₹ + flat planned reference line, Open Question #4 option c), rolling-N toggle (Period/4w/8w/12w, server clamp {4,8,12}), Zone→State→District→Taluka native-<details> drill tree, all fed by new pure lib/compliance/tree.ts buildGeoTree. e2e 4/4 green (DASH-01/04/06/07), buildGeoTree 8/8 unit, tsc clean. Task 4 browser-verify (gate=blocking) APPROVED (7 Recharts SVGs no console errors, region filter narrows all, upward aggregation verified, D-03/D-04 asymmetry live, actual ₹19,500). All Phase 4 requirements (COMP-03, DASH-01..07) Complete. Next: Phase 4 verification, then Phase 5 (Excel Export).
 Resume file: 

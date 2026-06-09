@@ -31,8 +31,12 @@
     "postgres": "3.4.9",
     "react": "19.2.7",
     "react-dom": "19.2.7",
+    "recharts": "^3.2.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "4.4.3"
+  },
+  "overrides": {
+    "react-is": "$react"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

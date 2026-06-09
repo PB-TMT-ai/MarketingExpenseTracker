@@ -13,6 +13,8 @@ node_modules/
 # Local embedded Postgres (PGlite on-disk data dir) — never commit local DB state
 .pglite/
 .pglite
+.pglite.bak-*/
+.pglite.bak-*
 
 # TypeScript / Next typegen (auto-generated, regenerated on build)
 *.tsbuildinfo

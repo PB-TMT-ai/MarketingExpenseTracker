@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Plan Upload & Periods** - Per-activity Excel plan ingestion that establishes the allowed-SFID master list per period (completed 2026-06-05)
 - [x] **Phase 3: Actuals Grid** - Editable spreadsheet-style grid for recording executions, filtering, and POP multi-item entry (completed 2026-06-06)
 - [ ] **Phase 3.1: Actuals Grid Refinements** - INSERTED — fix input lag, default In-Progress status, unlock Done-row edits, off-plan exception path with audit trail, paste-block bulk entry, top+bottom save bar
-- [ ] **Phase 4: Compliance & Dashboard** - Completeness math and the headline plan-executed / budget-vs-spend dashboard
+- [x] **Phase 4: Compliance & Dashboard** - Completeness math and the headline plan-executed / budget-vs-spend dashboard (completed 2026-06-09)
 - [ ] **Phase 5: Excel Export** - Export the current filtered grid to a correctly-typed `.xlsx`
 
 ## Phase Details
@@ -55,10 +55,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Re-uploading a plan for a period that already has actuals preserves existing executions (non-destructive merge/reconcile) and warns the user.
   5. Rows rejected as off-plan during an actuals import are listed so the user can see what was rejected and why.
 **Plans**: 4 plans
-- [ ] 04-01-PLAN.md — Status registry (STATUS_VALUES/TERMINAL_STATUSES + Cancelled rollout) + shared computeCompleteness helper (COMP-03, DASH-05)
-- [ ] 04-02-PLAN.md — lib/db/dashboard.ts aggregate helpers + PGlite integration tests (COMP-03, DASH-01..07)
-- [ ] 04-03-PLAN.md — Recharts install + /dashboard RSC + StatStrip/ByActivity/ByRegion/Exception cards + FilterBar + redirect from / (DASH-01..05, DASH-07)
-- [ ] 04-04-PLAN.md — Recharts weekly trend + spend charts + rolling-N toggle + Zone-Taluka drill tree + Playwright e2e (DASH-06, DASH-07)
+- [x] 04-01-PLAN.md — Status registry (STATUS_VALUES/TERMINAL_STATUSES + Cancelled rollout) + shared computeCompleteness helper (COMP-03, DASH-05)
+- [x] 04-02-PLAN.md — lib/db/dashboard.ts aggregate helpers + PGlite integration tests (COMP-03, DASH-01..07)
+- [x] 04-03-PLAN.md — Recharts install + /dashboard RSC + StatStrip/ByActivity/ByRegion/Exception cards + FilterBar + redirect from / (DASH-01..05, DASH-07)
+- [x] 04-04-PLAN.md — Recharts weekly trend + spend charts + rolling-N toggle + Zone-Taluka drill tree + Playwright e2e (DASH-06, DASH-07)
 **UI hint**: yes
 
 > **Discuss-step questions to resolve here** (do not resolve now): exact re-upload semantics (append vs upsert vs replace; policy for a plan row removed on re-upload that already has actuals — block / soft-archive / flag, never silent delete). Plan against a corpus of real vendor Excel files; handle DD/MM dates, IDs-as-text, rupee/comma stripping, header aliasing, and zero/multi-match cases.
@@ -147,5 +147,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 3.1 → 4 → 5
 | 2. Plan Upload & Periods | 3/3 | Complete   | 2026-06-05 |
 | 3. Actuals Grid | 5/5 | Complete   | 2026-06-06 |
 | 3.1. Actuals Grid Refinements | 4/5 | In progress | - |
-| 4. Compliance & Dashboard | 0/TBD | Not started | - |
+| 4. Compliance & Dashboard | 4/4 | Complete | 2026-06-09 |
 | 5. Excel Export | 0/TBD | Not started | - |

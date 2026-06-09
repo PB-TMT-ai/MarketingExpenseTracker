@@ -321,15 +321,31 @@ export async function _resetExecutionsForTest(): Promise<void> {
 /**
  * Test/e2e helper — seed ONE execution row against a plan_row id, so the e2e
  * suite can drive the FK-restrict path without Phase 3's actuals UI (which doesn't
- * exist yet). Inserts a row with status='Pending' and a deterministic unitNo. The
- * caller is responsible for ensuring `planRowId` references a real plan_row.
+ * exist yet). Inserts a row with a deterministic unitNo. The caller is responsible
+ * for ensuring `planRowId` references a real plan_row.
+ *
+ * Plan 04-04 extension: the dashboard e2e (DASH-01/04/06/07) needs to control the
+ * execution's `status`, `totalCost`, and `executionDate` so it can assert non-zero
+ * `% Executed`, weekly ISO-week bucketing, and per-week spend. All three are OPTIONAL
+ * with the prior defaults (status='Pending', no cost, no date) preserved when omitted,
+ * so existing callers (lib/db/__smoke__/*, the actuals conflict e2e) are unaffected.
+ * `executionDate` is written into the jsonb `fields` column — the same path the weekly
+ * aggregator reads (`fields->>'executionDate'`).
  *
  * NEVER call from app code. Used only by lib/db/__smoke__/* and the test-only
  * Route Handler /api/test/seed-execution (which is gated on NODE_ENV !== production).
  */
-export async function _seedExecutionForTest(planRowId: number): Promise<void> {
+export async function _seedExecutionForTest(
+  planRowId: number,
+  opts: { status?: string; totalCost?: number; executionDate?: string } = {},
+): Promise<void> {
+  const status = opts.status ?? "Pending";
+  const totalCost = opts.totalCost ?? null;
+  const fields =
+    opts.executionDate != null ? { executionDate: opts.executionDate } : {};
   await db.execute(
-    sql`insert into executions (plan_row_id, status, unit_no) values (${planRowId}, 'Pending', 'e2e-seed-1')`,
+    sql`insert into executions (plan_row_id, status, unit_no, total_cost, fields)
+        values (${planRowId}, ${status}, 'e2e-seed-1', ${totalCost}, ${JSON.stringify(fields)}::jsonb)`,
   );
 }
 

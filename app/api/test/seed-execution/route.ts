@@ -18,7 +18,12 @@ import { _findExecutionForTest } from "@/lib/db/executions";
  * Extended in 03-04 to also return the execution id + version after seeding,
  * so the e2e actuals conflict test can build a stale-version payload.
  *
- * Body: JSON `{ periodId: number, activity: string, sfid: string }`.
+ * Body: JSON `{ periodId, activity, sfid, status?, totalCost?, executionDate? }`.
+ *   - `status` (optional) — execution status literal (default 'Pending'). The
+ *     dashboard e2e passes 'Done' so `% Executed` is non-zero (DASH-01).
+ *   - `totalCost` (optional) — execution ₹, drives weekly spend (DASH-06).
+ *   - `executionDate` (optional, 'YYYY-MM-DD') — written into jsonb `fields`; the
+ *     weekly aggregator buckets on this (DASH-06).
  * Response:
  *   200: { planRowId, executionId, version }
  *   4xx: { error }
@@ -77,8 +82,27 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  // Seed the execution (inserts a row with status='Pending' and unitNo='e2e-seed-1').
-  await _seedExecutionForTest(planRowId);
+  // Optional dashboard-e2e knobs (Plan 04-04): status / totalCost / executionDate.
+  const rawStatus = (body as { status?: unknown })?.status;
+  const rawTotalCost = (body as { totalCost?: unknown })?.totalCost;
+  const rawExecDate = (body as { executionDate?: unknown })?.executionDate;
+  const seedOpts: {
+    status?: string;
+    totalCost?: number;
+    executionDate?: string;
+  } = {};
+  if (typeof rawStatus === "string" && rawStatus.length > 0) {
+    seedOpts.status = rawStatus;
+  }
+  if (typeof rawTotalCost === "number" && Number.isFinite(rawTotalCost)) {
+    seedOpts.totalCost = rawTotalCost;
+  }
+  if (typeof rawExecDate === "string" && rawExecDate.length > 0) {
+    seedOpts.executionDate = rawExecDate;
+  }
+
+  // Seed the execution (defaults: status='Pending', unitNo='e2e-seed-1').
+  await _seedExecutionForTest(planRowId, seedOpts);
 
   // 03-04 extension: read back id + version so the e2e conflict test can use them.
   // _findExecutionForTest is a test-only helper — gate is already in effect above.

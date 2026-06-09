@@ -107,6 +107,43 @@ function main() {
   console.log(
     "wrote e2e/fixtures/plan-pop-dealer-kit.xlsx + plan-dealer-certificate.xlsx",
   );
+
+  // --- 04-04 fixture: multi-geo counter-wall plan for the dashboard e2e ---
+  // 2 zones × 2 states × 2 districts × 2 talukas = 16 rows. Serves DASH-04 (two
+  // regions with EQUAL counts so filtering provably narrows numbers) and DASH-07
+  // (a four-level Zone→State→District→Taluka tree). SFIDs are deterministic
+  // (SF-GEO-001 … SF-GEO-016) so the e2e can seed executions by SFID.
+  const geoRows: unknown[][] = [];
+  let n = 0;
+  for (const region of ["North", "South"]) {
+    for (const state of ["StateA", "StateB"]) {
+      for (const district of ["DistX", "DistY"]) {
+        for (const taluka of ["TalP", "TalQ"]) {
+          n += 1;
+          geoRows.push(
+            row({
+              region,
+              state,
+              district,
+              taluka,
+              sfid: `SF-GEO-${String(n).padStart(3, "0")}`,
+              dealerOrArea: `Geo Dealer ${n}`,
+              planSqft: 100,
+              distributor: "Geo Dist",
+            }),
+          );
+        }
+      }
+    }
+  }
+  writeFileSync(
+    join(outDir, "plan-counter-wall-geo.xlsx"),
+    buildXlsx([headers, ...geoRows]),
+  );
+  // eslint-disable-next-line no-console
+  console.log(
+    `wrote e2e/fixtures/plan-counter-wall-geo.xlsx (${geoRows.length} rows)`,
+  );
 }
 
 main();
