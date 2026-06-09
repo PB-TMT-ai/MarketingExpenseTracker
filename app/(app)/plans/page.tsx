@@ -1,4 +1,5 @@
 import Link from "next/link";
+import DeletePlanButton from "./delete-plan-button";
 import { getActivePeriod } from "@/lib/periods/active";
 import {
   countByPeriodActivity,
@@ -128,16 +129,26 @@ export default async function PlansPage() {
                         )}
                       </div>
                     </div>
-                    <Link
-                      href={href}
-                      className={
-                        isEmpty
-                          ? "inline-flex min-h-11 shrink-0 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800"
-                          : "inline-flex min-h-11 shrink-0 items-center justify-center rounded-md border border-neutral-300 px-4 text-sm font-medium hover:bg-neutral-50"
-                      }
-                    >
-                      {isEmpty ? "Upload" : "Re-upload"}
-                    </Link>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Link
+                        href={href}
+                        className={
+                          isEmpty
+                            ? "inline-flex min-h-11 shrink-0 items-center justify-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800"
+                            : "inline-flex min-h-11 shrink-0 items-center justify-center rounded-md border border-neutral-300 px-4 text-sm font-medium hover:bg-neutral-50"
+                        }
+                      >
+                        {isEmpty ? "Upload" : "Re-upload"}
+                      </Link>
+                      {!isEmpty ? (
+                        <DeletePlanButton
+                          periodId={activePeriod.id}
+                          activity={activityKey}
+                          activityLabel={ACTIVITIES[activityKey].label}
+                          count={count}
+                        />
+                      ) : null}
+                    </div>
                   </li>
                 );
               })}
