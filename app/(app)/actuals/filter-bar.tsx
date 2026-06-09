@@ -23,6 +23,7 @@ import {
   type FacetSelections,
 } from "@/lib/actuals/filter";
 import { type UnitRow } from "@/lib/actuals/rows";
+import MultiSelectPopover from "@/app/(app)/multi-select-popover";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -151,49 +152,17 @@ export default function FilterBar({
           {ALL_FACETS.map((facet) => {
             const opts = options[facet] ?? [];
             const sel = selected[facet] ?? [];
-            if (opts.length === 0) return null;
-
             return (
-              <div key={facet} className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-neutral-600">
-                  {LABELS[facet]}
-                  {sel.length > 0 && (
-                    <span className="ml-1 inline-flex items-center rounded-full bg-neutral-900 px-1.5 text-[10px] font-semibold text-white">
-                      {sel.length}
-                    </span>
-                  )}
-                </label>
-                <select
-                  multiple
-                  size={Math.min(opts.length + 1, 5)}
-                  data-slot={`filter-${facet}`}
-                  value={sel}
-                  onChange={(e) => {
-                    const newVals = Array.from(
-                      e.target.selectedOptions,
-                      (o) => o.value,
-                    );
-                    onFacetChange(applyFacetChange(selected, facet, newVals));
-                  }}
-                  className="min-w-[120px] rounded-md border border-neutral-300 bg-white px-2 py-1 text-sm"
-                >
-                  {opts.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-                {sel.length > 0 && (
-                  <button
-                    onClick={() =>
-                      onFacetChange(applyFacetChange(selected, facet, []))
-                    }
-                    className="text-left text-[11px] text-neutral-500 hover:text-neutral-900"
-                  >
-                    Clear ({sel.length})
-                  </button>
-                )}
-              </div>
+              <MultiSelectPopover
+                key={facet}
+                label={LABELS[facet]}
+                options={opts}
+                selected={sel}
+                testIdSuffix={facet}
+                onChange={(newVals) => {
+                  onFacetChange(applyFacetChange(selected, facet, newVals));
+                }}
+              />
             );
           })}
         </div>

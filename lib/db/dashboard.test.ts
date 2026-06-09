@@ -16,8 +16,11 @@ import {
   aggregateExceptionTotals,
   aggregateScopeTotals,
   aggregateWeeklyBuckets,
+  breakdownByDistributor,
+  breakdownByState,
   type DashboardFilters,
 } from "./dashboard";
+import { executions, planRows } from "./schema";
 
 /**
  * PGlite-backed integration tests for `lib/db/dashboard.ts`.
@@ -321,5 +324,82 @@ describe("pending-includes-NULL (Phase 3.1 backfill semantics)", () => {
 
     const scope = await aggregateScopeTotals(noFilters(periodId));
     expect(scope.pendingUnits).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 2.2 — breakdownByState / breakdownByDistributor (RED)
+// ---------------------------------------------------------------------------
+
+describe("breakdownByState", () => {
+  it("groups planned/actual cost + counters + sqft by state", async () => {
+    const periodId = await insertPeriod({
+      type: "quarter",
+      label: "Q1",
+      startDate: "2026-04-01",
+      endDate: "2026-06-30",
+    });
+
+    // Seed: 2 counter-wall plan rows in MH, 1 in KA. One MH row executed with status='Done'.
+    await db.insert(planRows).values([
+      { periodId, activity: "counter-wall", sfid: "S1", state: "MH", plannedCost: "1000", fields: { planSqft: 100 } },
+      { periodId, activity: "counter-wall", sfid: "S2", state: "MH", plannedCost: "2000", fields: { planSqft: 200 } },
+      { periodId, activity: "counter-wall", sfid: "S3", state: "KA", plannedCost: "3000", fields: { planSqft: 300 } },
+    ]);
+    const mhRowId = await _findPlanRowIdForTest(periodId, "counter-wall", "S1");
+    await db.insert(executions).values({
+      planRowId: mhRowId!,
+      status: "Done",
+      totalCost: "950",
+      totalSqft: "98",
+    });
+
+    const rows = await breakdownByState({
+      periodId,
+      activity: null,
+      regions: [],
+      states: [],
+      districts: [],
+      distributors: [],
+    });
+
+    const mh = rows.find((r) => r.state === "MH")!;
+    expect(mh.plannedCost).toBe(3000);
+    expect(mh.actualCost).toBe(950);
+    expect(mh.plannedCounters).toBe(2);
+    expect(mh.actualCounters).toBe(1);
+    expect(mh.plannedSqft).toBe(300);
+    expect(mh.actualSqft).toBe(98);
+
+    const ka = rows.find((r) => r.state === "KA")!;
+    expect(ka.plannedCost).toBe(3000);
+    expect(ka.actualCounters).toBe(0);
+  });
+});
+
+describe("breakdownByDistributor", () => {
+  it("groups by distributor and coalesces NULL to (unassigned)", async () => {
+    const periodId = await insertPeriod({
+      type: "quarter",
+      label: "Q1",
+      startDate: "2026-04-01",
+      endDate: "2026-06-30",
+    });
+    await db.insert(planRows).values([
+      { periodId, activity: "counter-wall", sfid: "S1", distributor: "Acme", plannedCost: "1000", fields: { planSqft: 100 } },
+      { periodId, activity: "counter-wall", sfid: "S2", distributor: null, plannedCost: "500", fields: { planSqft: 50 } },
+    ]);
+
+    const rows = await breakdownByDistributor({
+      periodId,
+      activity: null,
+      regions: [],
+      states: [],
+      districts: [],
+      distributors: [],
+    });
+
+    expect(rows.find((r) => r.distributor === "Acme")?.plannedCost).toBe(1000);
+    expect(rows.find((r) => r.distributor === "(unassigned)")?.plannedCost).toBe(500);
   });
 });

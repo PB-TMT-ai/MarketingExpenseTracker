@@ -161,3 +161,43 @@ export const itemMaster = pgTable("item_master", {
   category: text("category"), // optional grouping (D-06)
   active: boolean("active").notNull().default(true), // retire without hard delete (D-09)
 });
+
+/**
+ * Adhoc expenses — period-scoped spend NOT tied to a plan-row SFID.
+ *
+ * Off-plan-guard preservation: there is NO FK to `plan_rows` and NO `sfid` column.
+ * The structural off-plan guard on `executions → plan_rows` is untouched; this is a
+ * parallel surface for one-off expenses (local events, ad-hoc vendor work).
+ *
+ * Period scoping is enforced by the periodId FK (mirrors planRows.periodId). Optimistic
+ * concurrency via `version` mirrors `executions.version`. `activityDate` is the canonical
+ * date — "month of activity" is derived at render time (`format(activityDate, 'MMM yyyy')`),
+ * never stored.
+ */
+export const adhocExpenses = pgTable(
+  "adhoc_expenses",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    periodId: bigint("period_id", { mode: "number" })
+      .notNull()
+      .references(() => periods.id),
+    region: text("region"),
+    state: text("state"),
+    district: text("district"),
+    taluka: text("taluka"),
+    activity: text("activity"),           // free text with typeahead from the activity registry
+    activityDate: date("activity_date"),
+    budgetHeader: text("budget_header"),  // free text in v1
+    expenseAmount: numeric("expense_amount", { precision: 14, scale: 2 }),  // ex-GST
+    vendorName: text("vendor_name"),
+    remarks: text("remarks"),
+    version: integer("version").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("adhoc_expenses_period_idx").on(t.periodId)],
+);

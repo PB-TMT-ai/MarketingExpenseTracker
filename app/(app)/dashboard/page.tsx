@@ -5,8 +5,6 @@ import { ACTIVITY_KEYS } from "@/lib/activities/registry";
 import type { ActivityKey } from "@/lib/activities/types";
 import {
   aggregateScopeTotals,
-  aggregateByActivity,
-  aggregateByRegion,
   aggregateByGeo,
   aggregateWeeklyBuckets,
   aggregateExceptionTotals,
@@ -17,8 +15,7 @@ import {
 import { computeCompleteness } from "@/lib/compliance";
 import { buildGeoTree } from "@/lib/compliance/tree";
 import StatStrip from "./stat-strip";
-import ByActivityCard from "./by-activity-card";
-import ByRegionCard from "./by-region-card";
+import BreakdownCard from "./breakdown-card";
 import ExceptionCard from "./exception-card";
 import DashboardFilterBar, {
   type DashboardFilterOptions,
@@ -139,11 +136,9 @@ export default async function DashboardPage({
 
   // Six parallel aggregators (DASH-01..DASH-07 data plane). All numbers flow through
   // lib/db/dashboard — no inline SQL here.
-  const [totals, byActivity, byRegion, byGeo, weekly, exceptionTotals] =
+  const [totals, byGeo, weekly, exceptionTotals] =
     await Promise.all([
       aggregateScopeTotals(filters),
-      aggregateByActivity(filters),
-      aggregateByRegion(filters),
       aggregateByGeo(filters),
       aggregateWeeklyBuckets(filters, weeklyMode),
       aggregateExceptionTotals(filters),
@@ -182,10 +177,7 @@ export default async function DashboardPage({
           </p>
         ) : null}
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <ByActivityCard rows={byActivity} />
-          <ByRegionCard rows={byRegion} />
-        </div>
+        <BreakdownCard filters={filters} />
 
         <ExceptionCard totals={exceptionTotals} />
 

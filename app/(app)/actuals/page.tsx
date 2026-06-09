@@ -12,6 +12,9 @@ import type { ActivityKey } from "@/lib/activities/types";
 import type { FacetSelections } from "@/lib/actuals/filter";
 import ActualsGrid from "./actuals-grid";
 import ActivitySwitcher from "./activity-switcher";
+import AdhocGrid from "./adhoc-grid";
+import { listAdhocByPeriod } from "@/lib/db/adhoc";
+import type { ActualsTabKey } from "./activity-switcher";
 
 /**
  * Read a (possibly repeated) filter param into a string[] (P2-5).
@@ -74,6 +77,40 @@ export default async function ActualsPage({
   // Activity selection: ?activity=<key>, default to first key.
   const rawActivity = resolvedParams.activity;
   const activityParam = Array.isArray(rawActivity) ? rawActivity[0] : rawActivity;
+
+  // Adhoc Expenses branch — period-scoped off-plan grid. No SFID gate.
+  if (activityParam === "adhoc") {
+    const adhocRows = await listAdhocByPeriod(activePeriod.id);
+    return (
+      <div data-slot="actuals-page" className="mx-auto max-w-[1600px]">
+        <header className="mb-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Actuals</h1>
+            <p className="mt-2 text-sm text-neutral-600">
+              Adhoc expenses recorded for{" "}
+              <span className="font-medium">{activePeriod.label}</span>.
+            </p>
+          </div>
+        </header>
+        <ActivitySwitcher
+          activityKeys={ACTIVITY_KEYS}
+          activeKey={"adhoc" as ActualsTabKey}
+        />
+        <section className="rounded-xl border border-neutral-200 bg-white shadow-sm">
+          <div className="border-b border-neutral-200 p-4">
+            <h2 className="text-base font-semibold">Adhoc Expenses</h2>
+            <p className="mt-1 text-xs text-neutral-500">
+              Off-plan, period-scoped spend. Not gated by SFID.
+            </p>
+          </div>
+          <div className="p-4">
+            <AdhocGrid initialRows={adhocRows} periodId={activePeriod.id} />
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   const activityKey: ActivityKey =
     activityParam && ACTIVITY_KEYS.includes(activityParam as ActivityKey)
       ? (activityParam as ActivityKey)

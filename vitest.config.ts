@@ -14,8 +14,16 @@ import { defineConfig } from "vitest/config";
  */
 export default defineConfig({
   test: {
-    include: ["lib/**/*.{test,spec}.{ts,tsx}"],
+    include: [
+      "lib/**/*.{test,spec}.{ts,tsx}",
+      "app/**/*.{test,spec}.{ts,tsx}",
+    ],
     exclude: ["node_modules/**", ".next/**", "e2e/**", "playwright/**"],
+    // `globals: true` lets @testing-library/react auto-register its `afterEach(cleanup)`
+    // hook, which unmounts the React tree between tests. Without it, the jsdom body
+    // accumulates components and `getByRole("button", { name: /Region/i })` finds
+    // multiple matches across tests in multi-select-popover.test.tsx.
+    globals: true,
     env: {
       DATABASE_URL: process.env.DATABASE_URL ?? "memory://",
     },
