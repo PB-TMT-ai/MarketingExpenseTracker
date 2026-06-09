@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import {
   commitPlanUploadForm,
+  fetchExistingSfids,
   type CommitPlanState,
 } from "@/lib/actions/plans";
 import { ACTIVITIES } from "@/lib/activities/registry";
@@ -55,6 +56,8 @@ export default function UploadForm({
   );
   const [preview, setPreview] = useState<PreviewRow[] | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [existingSfids, setExistingSfids] = useState<Set<string>>(new Set());
+  const [commitMode, setCommitMode] = useState<"additive" | "mirror">("mirror");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [state, formAction, pending] = useActionState<CommitPlanState, FormData>(
@@ -85,6 +88,18 @@ export default function UploadForm({
     }
   }, [state]);
 
+  // Fetch existing SFIDs for the selected (periodId, activity) scope so we can
+  // classify upload rows as "update" vs "valid" (new) in buildPreview, and to
+  // show the commit-mode selector when a plan already exists.
+  useEffect(() => {
+    if (!periodId) return;
+    fetchExistingSfids(periodId, activity).then((sfids) => {
+      setExistingSfids(new Set(sfids));
+      // Reset mode to mirror when scope changes
+      setCommitMode("mirror");
+    });
+  }, [activity, periodId]);
+
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     setParseError(null);
     setPreview(null);
@@ -112,7 +127,7 @@ export default function UploadForm({
         );
         return;
       }
-      const next = buildPreview(rows, ACTIVITIES[activity].planColumns, coerceCell);
+      const next = buildPreview(rows, ACTIVITIES[activity].planColumns, coerceCell, existingSfids);
       setPreview(next);
     } catch (err) {
       setParseError(err instanceof Error ? err.message : "Failed to parse file");
@@ -124,6 +139,8 @@ export default function UploadForm({
     setActivity(value as ActivityKey);
     setPreview(null);
     setParseError(null);
+    setExistingSfids(new Set());
+    setCommitMode("mirror");
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -142,6 +159,7 @@ export default function UploadForm({
       <input type="hidden" name="periodId" value={String(periodId)} />
       <input type="hidden" name="activity" value={activity} />
       <input type="hidden" name="rows" value={JSON.stringify(toCommit)} />
+      <input type="hidden" name="commitMode" value={commitMode} />
 
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="text-sm">
@@ -208,6 +226,44 @@ export default function UploadForm({
       ) : null}
 
       {preview ? <PreviewTable preview={preview} /> : null}
+
+      {preview !== null && existingSfids.size > 0 ? (
+        <fieldset className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
+          <legend className="px-1 text-xs font-semibold text-neutral-700">
+            A plan already exists ({existingSfids.size} rows). How do you want to proceed?
+          </legend>
+          <div className="mt-2 grid gap-2">
+            <label className="flex cursor-pointer items-start gap-2 text-sm">
+              <input
+                type="radio"
+                name="commitModeChoice"
+                value="mirror"
+                checked={commitMode === "mirror"}
+                onChange={() => setCommitMode("mirror")}
+                className="mt-0.5 shrink-0"
+              />
+              <span>
+                <span className="font-medium">Replace from scratch</span> — this file completely
+                replaces the existing plan; rows not in this file are deleted.
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 text-sm">
+              <input
+                type="radio"
+                name="commitModeChoice"
+                value="additive"
+                checked={commitMode === "additive"}
+                onChange={() => setCommitMode("additive")}
+                className="mt-0.5 shrink-0"
+              />
+              <span>
+                <span className="font-medium">Add / update quantities</span> — new rows are added,
+                existing rows are updated; rows not in this file are kept.
+              </span>
+            </label>
+          </div>
+        </fieldset>
+      ) : null}
 
       <div className="flex items-center gap-3">
         <button
