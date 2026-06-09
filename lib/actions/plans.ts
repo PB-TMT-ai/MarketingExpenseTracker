@@ -10,7 +10,6 @@ import {
   bulkInsertPlanRows,
   deletePlanRows,
   fetchSfidsByScope,
-  listByPeriodActivity,
   queryBlockedDealers,
   updatePlanRow,
   type BlockedDealer,
@@ -307,28 +306,29 @@ export async function deletePlanByScope(
 ): Promise<DeletePlanState> {
   await requireSession();
 
-  const existing = await listByPeriodActivity(periodId, activity);
-  if (existing.length === 0) {
-    revalidatePath("/plans");
-    return { ok: true, deleted: 0 };
-  }
-
-  const ids = existing.map((r) => r.id);
+  const activityKey = activity as ActivityKey;
+  let deletedCount = 0;
   try {
     await db.transaction(async (tx) => {
+      const existing = await tx
+        .select({ id: planRows.id })
+        .from(planRows)
+        .where(and(eq(planRows.periodId, periodId), eq(planRows.activity, activityKey)));
+      if (existing.length === 0) return;
+      const ids = existing.map((r) => Number(r.id));
       await deletePlanRows(tx, ids);
+      deletedCount = ids.length;
     });
     revalidatePath("/plans");
-    return { ok: true, deleted: ids.length };
+    return { ok: true, deleted: deletedCount };
   } catch (err) {
     if (isFkRestrictError(err)) {
-      // Re-query with empty incomingSfids so ALL existing rows are candidates.
       const blocked = await queryBlockedDealers(db, periodId, activity, []);
-      return {
-        ok: false,
-        error: `Cannot delete — ${blocked.length} dealer(s) have recorded actuals`,
-        blockedDealers: blocked,
-      };
+      const msg =
+        blocked.length > 0
+          ? `Cannot delete — ${blocked.length} dealer(s) have recorded actuals`
+          : "Cannot delete — some dealers have recorded actuals";
+      return { ok: false, error: msg, blockedDealers: blocked };
     }
     throw err;
   }
