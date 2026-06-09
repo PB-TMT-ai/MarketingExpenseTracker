@@ -15,6 +15,7 @@ import {
   type WeeklyMode,
 } from "@/lib/db/dashboard";
 import { computeCompleteness } from "@/lib/compliance";
+import { buildGeoTree } from "@/lib/compliance/tree";
 import StatStrip from "./stat-strip";
 import ByActivityCard from "./by-activity-card";
 import ByRegionCard from "./by-region-card";
@@ -23,6 +24,10 @@ import DashboardFilterBar, {
   type DashboardFilterOptions,
 } from "./dashboard-filter-bar";
 import RefreshButton from "./refresh-button";
+import WeeklyTrendChart from "./weekly-trend-chart";
+import WeeklySpendChart from "./weekly-spend-chart";
+import RollingNToggle from "./rolling-n-toggle";
+import GeoDrillTree from "./geo-drill-tree";
 
 export const dynamic = "force-dynamic";
 
@@ -184,15 +189,28 @@ export default async function DashboardPage({
 
         <ExceptionCard totals={exceptionTotals} />
 
-        {/* Filled by Plan 04-04 — receives weekly={weekly} and rows={byGeo} */}
-        <section
-          data-slot="weekly-trend-chart-placeholder"
-          data-weeks={weekly.length}
-        />
-        <section
-          data-slot="geo-drill-tree-placeholder"
-          data-rows={byGeo.length}
-        />
+        {/* DASH-06 — weekly trend + spend charts with rolling-N window toggle. */}
+        <section data-slot="trend-section" className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
+              Weekly trend
+            </h2>
+            <RollingNToggle
+              currentMode={weeklyMode.kind}
+              currentWeeks={weeklyMode.kind === "rolling" ? weeklyMode.weeks : null}
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <WeeklyTrendChart buckets={weekly} />
+            <WeeklySpendChart
+              buckets={weekly}
+              plannedBaseline={totals.plannedCost / Math.max(1, weekly.length)}
+            />
+          </div>
+        </section>
+
+        {/* DASH-07 — Zone → State → District → Taluka drill tree. */}
+        <GeoDrillTree tree={buildGeoTree(byGeo)} />
       </div>
     </div>
   );
