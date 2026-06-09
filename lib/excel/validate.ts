@@ -114,6 +114,7 @@ export function buildPreview(
   rows: readonly unknown[][],
   planColumns: readonly FieldDef[],
   coerce: typeof CoerceCellFn,
+  existingSfids?: Set<string>,
 ): PreviewRow[] {
   // Defensive: locate the SFID column index (the registry always has one for
   // all six activities, but if a 7th activity were registered without an sfid
@@ -224,20 +225,32 @@ export function buildPreview(
     });
   }
 
+  // Update pass: classify rows whose SFID exists in the DB as "update" (DB-aware
+  // classification provided by the upload form fetching existing SFIDs before preview).
+  // fieldError takes priority — only "valid" rows get reclassified.
+  const afterUpdate: PreviewRow[] =
+    existingSfids && existingSfids.size > 0
+      ? out.map((p) =>
+          p.classification === "valid" && p.sfid !== null && existingSfids.has(p.sfid)
+            ? { ...p, classification: "update" as Classification }
+            : p,
+        )
+      : out;
+
   // Second pass: mark duplicate SFIDs (in-file). fieldError wins over duplicate.
   const sfidCounts = new Map<string, number>();
-  for (const p of out) {
+  for (const p of afterUpdate) {
     if (p.sfid !== null) {
       sfidCounts.set(p.sfid, (sfidCounts.get(p.sfid) ?? 0) + 1);
     }
   }
-  return out.map((p) => {
+  return afterUpdate.map((p) => {
     if (
       p.classification !== "fieldError" &&
       p.sfid !== null &&
       (sfidCounts.get(p.sfid) ?? 0) > 1
     ) {
-      return { ...p, classification: "duplicate" };
+      return { ...p, classification: "duplicate" as Classification };
     }
     return p;
   });
