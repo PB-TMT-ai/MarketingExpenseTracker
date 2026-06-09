@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 3.1 Plan 03 COMPLETE — COMP-04 off-plan-exception BACKEND. addOffPlanExecution (requireSession + Zod reason-required + ONE db.transaction: insertExceptionPlanRow source='exception' -> applyServerCalc -> insertExecution FK'd to it) + isUniqueViolation(23505) clean dupe message (R3) + R4 re-upload guard (commitPlanUpload merge-delete scoped to source='plan-upload'; exception rows survive, regression test proves it). promoteExecutionColumns shared helper extracted. tsc --noEmit clean; executions.test.ts + plans.test.ts 31/31 green (--no-file-parallelism). Off-plan guard structurally intact (executions has no sfid column). Next: 03_1-04 (GRID-12/13) then 03_1-05 (COMP-04 frontend: modal + pill + e2e — consumes addOffPlanExecution/AddOffPlanState)."
-last_updated: "2026-06-08T19:13:06.023Z"
-last_activity: 2026-06-08 -- Phase 04 execution started
+stopped_at: "Phase 04 Plan 03 COMPLETE — /dashboard route live. RSC page (force-dynamic, parseDashboardFilters Zod + status-strip per D-17, Promise.all of six 04-02 aggregators -> computeCompleteness from 04-01) + four server-rendered cards (StatStrip, ByActivity, ByRegion, Exception/D-07 amber-pill) + DashboardFilterBar client island (Region/State/District/Distributor cascade via optionsFor/D-11, URL-as-source-of-truth, NO status facet) + RefreshButton (revalidateDashboard Server Action, Pitfall 5) + redirect / -> /dashboard + Dashboard nav link. Recharts ^3.2.0 installed (overrides.react-is=$react, React-19 peer fix) with two placeholder slots pre-wired (weekly/byGeo props) for 04-04. tsc clean; npm test 248/250 (2 failures pre-existing at 390d27b, logged in deferred-items.md). Task 4 browser-verify APPROVED: % Executed live 100.0%=1/(1-0) and 0.0%=0/(2-0) (D-04 denominator wired), ?status=Done silently ignored. Next: 04-04 (Wave 3 — Recharts weekly trend + spend charts + rolling-N + Zone-Taluka drill tree + Playwright e2e; DASH-06, DASH-07)."
+last_updated: "2026-06-09T11:36:00.000Z"
+last_activity: 2026-06-09 -- Phase 04 Plan 03 complete (dashboard route + cards)
 progress:
   total_phases: 6
   completed_phases: 3
   total_plans: 22
-  completed_plans: 16
-  percent: 50
+  completed_plans: 18
+  percent: 56
 ---
 
 # Project State
@@ -26,9 +26,16 @@ See: .planning/PROJECT.md (updated 2026-06-04)
 ## Current Position
 
 Phase: 04 (compliance-dashboard) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 04
-Last activity: 2026-06-08 -- Phase 04 execution started
+Plan: 4 of 4 (next)
+Status: Executing Phase 04 — Wave 1 (04-01, 04-02) + Wave 2 (04-03) DONE; Wave 3 (04-04) next
+Last activity: 2026-06-09 -- Phase 04 Plan 03 complete (dashboard route + cards)
+
+Phase 04 Wave structure:
+
+- Wave 1: 04-01 (status registry + computeCompleteness — COMP-03, DASH-05) — DONE
+- Wave 1: 04-02 (lib/db/dashboard.ts aggregators + PGlite tests — DASH-01..07) — DONE
+- Wave 2: 04-03 (/dashboard RSC + StatStrip/ByActivity/ByRegion/Exception + FilterBar + redirect + Recharts install — DASH-01..05, DASH-07) — DONE
+- Wave 3: 04-04 (Recharts weekly trend + spend charts + rolling-N + Zone-Taluka drill tree + e2e — DASH-06, DASH-07) — TODO
 
 Phase 3 (Actuals Grid) — COMPLETE 5/5 (03-01..03-05).
 
@@ -77,6 +84,7 @@ Progress: [██████░░░░] 60% (3/5 Phase 3.1 plans done)
 | Phase 03 P04 | 30 min | 3 tasks | 9 files |
 | Phase 03_1 P01 | 21 min | 3 tasks | 9 files |
 | Phase 03_1 P03 | 10 min | 3 tasks | 5 files |
+| Phase 04 P03 | 55 min | 4 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -112,6 +120,12 @@ Recent decisions affecting current work:
 - [03_1-03]: R4 cross-phase guard — commitPlanUpload's merge-delete is scoped to source='plan-upload' (snapshot now SELECTs source), so a plan re-upload never deletes/FK-blocks source='exception' rows (D3.1-02). Regression test proves exception X survives re-upload while plan-upload orphan B is deleted.
 - [03_1-03]: addOffPlanExecution signature is single-arg (input: unknown) returning AddOffPlanState, NOT the (prevState, input) useActionState shape — Plan 05's modal calls it directly. No createdBy (single shared password, D3.1-08) — deferred to a future auth phase.
 - [03_1-03]: promoteExecutionColumns extracted as a shared helper so saveExecutionsBatch and addOffPlanExecution use ONE authoritative numeric/status split (Pitfall 9 — no calc-path drift).
+- [04-03]: Recharts ^3.2.0 installed via npm (npm-safe, unlike xlsx) with overrides.react-is=$react for the React 19 peer-dep fix (Recharts issue #4558); --legacy-peer-deps explicitly NOT used.
+- [04-03]: Dashboard FilterBar omits the Status facet entirely (D-17) — the dashboard SHOWS status breakdowns so status faceting is circular; parseDashboardFilters silently strips ?status=... (verified live: ?status=Done ignored, stats unchanged).
+- [04-03]: URL is the single source of truth for dashboard filter state — no useState lift; router.replace(scroll:false) on each facet change. Cascade reuses optionsFor from lib/actuals/filter (D-11, not the FilterBar component).
+- [04-03]: Dashboard cards are pure RSC presentation — each receives its pre-aggregated slice as a typed prop; zero DB/SQL access inside card components. Every number flows through lib/db/dashboard (04-02) -> computeCompleteness (04-01).
+- [04-03]: % Executed and % Cancelled use ASYMMETRIC denominators (D-04): executed/(planned-cancelled) vs cancelled/planned. Verified live (1/(1-0)=100.0%, 0/(2-0)=0.0%); contrast on a single dataset blocked only by AG-Grid headless-edit limitation, math covered by completeness.test.ts.
+- [04-03]: Plan-04-04 placeholder slots (weekly-trend-chart, geo-drill-tree) pre-wired with weekly={weekly} and rows={byGeo} props so next-plan chart/tree islands plug in with no further server work.
 
 ### Pending Todos
 
@@ -142,6 +156,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-06-08T18:21:48Z
-Stopped at: Phase 3.1 Plan 03 COMPLETE — COMP-04 off-plan-exception BACKEND. addOffPlanExecution (requireSession + Zod reason-required + ONE db.transaction: insertExceptionPlanRow source='exception' -> applyServerCalc -> insertExecution FK'd to it) + isUniqueViolation(23505) clean dupe message (R3) + R4 re-upload guard (commitPlanUpload merge-delete scoped to source='plan-upload'; exception rows survive, regression test proves it). promoteExecutionColumns shared helper extracted. tsc --noEmit clean; executions.test.ts + plans.test.ts 31/31 green (--no-file-parallelism). Off-plan guard structurally intact (executions has no sfid column). Next: 03_1-04 (GRID-12/13) then 03_1-05 (COMP-04 frontend: modal + pill + e2e — consumes addOffPlanExecution/AddOffPlanState).
+Last session: 2026-06-09T11:36:00Z
+Stopped at: Phase 04 Plan 03 COMPLETE — /dashboard route + four RSC cards + URL-driven FilterBar (no status facet, D-17) + RefreshButton (revalidateDashboard) + redirect / -> /dashboard + Dashboard nav link. Recharts ^3.2.0 installed (overrides.react-is=$react) with placeholder slots pre-wired for 04-04. tsc clean; npm test 248/250 (2 pre-existing failures logged in deferred-items.md). Task 4 browser-verify APPROVED (% Executed live 100.0%/0.0%, ?status=Done ignored). Dev-DB migration-journal drift root-caused as ENVIRONMENT issue (not Phase 4 code), dev DB reset+reseeded (.pglite.bak-20260609). Next: 04-04 (Wave 3 — Recharts charts + rolling-N + Zone-Taluka drill tree + Playwright e2e; DASH-06, DASH-07).
 Resume file: 

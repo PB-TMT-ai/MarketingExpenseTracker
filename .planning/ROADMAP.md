@@ -57,7 +57,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 4 plans
 - [x] 04-01-PLAN.md — Status registry (STATUS_VALUES/TERMINAL_STATUSES + Cancelled rollout) + shared computeCompleteness helper (COMP-03, DASH-05)
 - [ ] 04-02-PLAN.md — lib/db/dashboard.ts aggregate helpers + PGlite integration tests (COMP-03, DASH-01..07)
-- [ ] 04-03-PLAN.md — Recharts install + /dashboard RSC + StatStrip/ByActivity/ByRegion/Exception cards + FilterBar + redirect from / (DASH-01..05, DASH-07)
+- [x] 04-03-PLAN.md — Recharts install + /dashboard RSC + StatStrip/ByActivity/ByRegion/Exception cards + FilterBar + redirect from / (DASH-01..05, DASH-07)
 - [ ] 04-04-PLAN.md — Recharts weekly trend + spend charts + rolling-N toggle + Zone-Taluka drill tree + Playwright e2e (DASH-06, DASH-07)
 **UI hint**: yes
 
@@ -147,5 +147,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 3.1 → 4 → 5
 | 2. Plan Upload & Periods | 3/3 | Complete   | 2026-06-05 |
 | 3. Actuals Grid | 5/5 | Complete   | 2026-06-06 |
 | 3.1. Actuals Grid Refinements | 4/5 | In progress | - |
-| 4. Compliance & Dashboard | 1/4 | In Progress|  |
+| 4. Compliance & Dashboard | 3/4 | In Progress|  |
 | 5. Excel Export | 0/TBD | Not started | - |

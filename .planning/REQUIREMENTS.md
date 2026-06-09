@@ -53,18 +53,18 @@ Requirements for the initial release. Each maps to a roadmap phase.
 
 - [x] **COMP-01**: The system structurally prevents recording an actual against an SFID not present in the plan (off-plan guard enforced at the database level)
 - [x] **COMP-02**: Off-plan rows from an actuals import are listed so the user can see what was rejected and why
-- [ ] **COMP-03**: System computes "% of plan executed" (completeness) for the active period, per activity and per filter scope
+- [x] **COMP-03**: System computes "% of plan executed" (completeness) for the active period, per activity and per filter scope
 - [x] **COMP-04**: User can record an "off-plan exception" execution (a dealer painted that wasn't in the uploaded plan) via a deliberate, audited affordance that creates ONE plan_row marked `source = 'exception'` plus the execution in a single transaction; bulk plan-upload off-plan rejection (COMP-01/COMP-02) is unchanged; exception rows are distinguishable from plan-uploaded rows for later dashboard reporting (Phase 3.1)
 
 ### Dashboard
 
-- [ ] **DASH-01**: On login, user sees a dashboard with % plan executed and planned/executed/pending counts for the active period
-- [ ] **DASH-02**: Dashboard breaks down execution and spend by activity and by region
-- [ ] **DASH-03**: Dashboard shows planned budget vs actual spend
-- [ ] **DASH-04**: Dashboard respects the active period and the Region/State/Distributor filters
-- [ ] **DASH-05**: Dashboard surfaces a distinct **Cancelled** counter count alongside Planned / Executed / Pending; Cancelled rows are excluded from the "% executed" denominator (consistent with `TERMINAL_STATUSES` in `lib/activities/status.ts`)
+- [x] **DASH-01**: On login, user sees a dashboard with % plan executed and planned/executed/pending counts for the active period
+- [x] **DASH-02**: Dashboard breaks down execution and spend by activity and by region
+- [x] **DASH-03**: Dashboard shows planned budget vs actual spend
+- [x] **DASH-04**: Dashboard respects the active period and the Region/State/Distributor filters
+- [x] **DASH-05**: Dashboard surfaces a distinct **Cancelled** counter count alongside Planned / Executed / Pending; Cancelled rows are excluded from the "% executed" denominator (consistent with `TERMINAL_STATUSES` in `lib/activities/status.ts`)
 - [ ] **DASH-06**: Within the active period the dashboard shows a week-wise trend of planned vs executed vs cancelled counters and weekly actual spend, bucketed by `executions.executionDate`; a standalone rolling "recent N weeks" view is selectable independently of the active period
-- [ ] **DASH-07**: User can drill Zone (= `plan_rows.region`) → State → District → Taluka; each level shows planned / executed / cancelled counter counts and planned-vs-actual expense for the rows below it, reusing the cascade utility in `lib/actuals/filter.ts`
+- [x] **DASH-07**: User can drill Zone (= `plan_rows.region`) → State → District → Taluka; each level shows planned / executed / cancelled counter counts and planned-vs-actual expense for the rows below it, reusing the cascade utility in `lib/actuals/filter.ts`
 
 ### Export
 
@@ -132,14 +132,14 @@ Which phases cover which requirements. Populated during roadmap creation.
 | GRID-12 | Phase 3.1 — Actuals Grid Refinements | Complete |
 | GRID-13 | Phase 3.1 — Actuals Grid Refinements | Complete |
 | COMP-04 | Phase 3.1 — Actuals Grid Refinements | Complete |
-| COMP-03 | Phase 4 — Compliance & Dashboard | Pending |
-| DASH-01 | Phase 4 — Compliance & Dashboard | Pending |
-| DASH-02 | Phase 4 — Compliance & Dashboard | Pending |
-| DASH-03 | Phase 4 — Compliance & Dashboard | Pending |
-| DASH-04 | Phase 4 — Compliance & Dashboard | Pending |
-| DASH-05 | Phase 4 — Compliance & Dashboard | Pending |
+| COMP-03 | Phase 4 — Compliance & Dashboard | Complete |
+| DASH-01 | Phase 4 — Compliance & Dashboard | Complete |
+| DASH-02 | Phase 4 — Compliance & Dashboard | Complete |
+| DASH-03 | Phase 4 — Compliance & Dashboard | Complete |
+| DASH-04 | Phase 4 — Compliance & Dashboard | Complete |
+| DASH-05 | Phase 4 — Compliance & Dashboard | Complete |
 | DASH-06 | Phase 4 — Compliance & Dashboard | Pending |
-| DASH-07 | Phase 4 — Compliance & Dashboard | Pending |
+| DASH-07 | Phase 4 — Compliance & Dashboard | Complete |
 | EXPT-01 | Phase 5 — Excel Export | Pending |
 
 **Coverage:**
