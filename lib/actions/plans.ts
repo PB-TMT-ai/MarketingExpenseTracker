@@ -307,17 +307,18 @@ export async function deletePlanByScope(
   await requireSession();
 
   const activityKey = activity as ActivityKey;
-  let deletedCount = 0;
   try {
-    await db.transaction(async (tx) => {
+    // Return the count FROM the transaction callback (not via an outer-let mutation)
+    // so the returned `deleted` can never disagree with what actually committed.
+    const deletedCount = await db.transaction(async (tx) => {
       const existing = await tx
         .select({ id: planRows.id })
         .from(planRows)
         .where(and(eq(planRows.periodId, periodId), eq(planRows.activity, activityKey)));
-      if (existing.length === 0) return;
+      if (existing.length === 0) return 0;
       const ids = existing.map((r) => Number(r.id));
       await deletePlanRows(tx, ids);
-      deletedCount = ids.length;
+      return ids.length;
     });
     revalidatePath("/plans");
     return { ok: true, deleted: deletedCount };

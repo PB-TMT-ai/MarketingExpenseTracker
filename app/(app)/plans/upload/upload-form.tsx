@@ -93,11 +93,25 @@ export default function UploadForm({
   // show the commit-mode selector when a plan already exists.
   useEffect(() => {
     if (!periodId) return;
-    fetchExistingSfids(periodId, activity).then((sfids) => {
-      setExistingSfids(new Set(sfids));
-      // Reset mode to mirror when scope changes
-      setCommitMode("mirror");
-    });
+    // `cancelled` guards against a stale response landing after the scope changed
+    // (rapid activity/period switches race) AND lets us ignore a rejection from an
+    // out-of-date request. On any error we fail safe to an empty set (treat the
+    // scope as having no existing plan rather than leaving stale data on screen).
+    let cancelled = false;
+    fetchExistingSfids(periodId, activity)
+      .then((sfids) => {
+        if (cancelled) return;
+        setExistingSfids(new Set(sfids));
+        setCommitMode("mirror"); // reset mode whenever scope changes
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setExistingSfids(new Set());
+        setCommitMode("mirror");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [activity, periodId]);
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
