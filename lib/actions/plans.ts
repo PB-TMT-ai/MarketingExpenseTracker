@@ -9,6 +9,7 @@ import { planRows } from "../db/schema";
 import {
   bulkInsertPlanRows,
   deletePlanRows,
+  fetchSfidsByScope,
   queryBlockedDealers,
   updatePlanRow,
   type BlockedDealer,
@@ -76,6 +77,7 @@ export type CommitPlanInput = {
   periodId: number;
   activity: string;
   rows: readonly ParsedRow[];
+  commitMode?: "additive" | "mirror";
 };
 
 export type CommitPlanState =
@@ -203,9 +205,15 @@ export async function commitPlanUpload(
       // source='exception' (off-plan-exception affordance) are NEVER in an upload, so they
       // must SURVIVE a re-upload (D3.1-02). Without the `source === 'plan-upload'` filter a
       // re-upload would delete them (or fire a spurious FK-restrict "blocked dealer").
-      const toDeleteIds = existing
-        .filter((r) => !incomingSet.has(r.sfid) && r.source === "plan-upload")
-        .map((r) => r.id);
+      // In "additive" mode, skip orphan deletion — existing rows not in the
+      // upload are deliberately kept (user chose "add/update quantities").
+      const commitMode = input.commitMode ?? "mirror";
+      const toDeleteIds =
+        commitMode === "mirror"
+          ? existing
+              .filter((r) => !incomingSet.has(r.sfid) && r.source === "plan-upload")
+              .map((r) => r.id)
+          : [];
       let deleted = 0;
       if (toDeleteIds.length > 0) {
         await deletePlanRows(tx, toDeleteIds);
@@ -263,5 +271,66 @@ export async function commitPlanUploadForm(
   } catch {
     return { ok: false, error: "Invalid rows JSON" };
   }
-  return commitPlanUpload(_prev, { periodId, activity: activityRaw, rows });
+  const commitModeRaw = formData.get("commitMode");
+  const commitMode: "additive" | "mirror" =
+    commitModeRaw === "additive" ? "additive" : "mirror";
+  return commitPlanUpload(_prev, { periodId, activity: activityRaw, rows, commitMode });
+}
+
+/**
+ * Lightweight read action — returns the current SFIDs for a (period, activity)
+ * scope so the upload form preview can mark matching rows as "update" before commit.
+ * Called client-side when activity or period selection changes.
+ */
+export async function fetchExistingSfids(
+  periodId: number,
+  activity: string,
+): Promise<string[]> {
+  await requireSession();
+  return fetchSfidsByScope(periodId, activity);
+}
+
+export type DeletePlanState =
+  | { ok: true; deleted: number }
+  | { ok: false; error: string; blockedDealers?: BlockedDealer[] };
+
+/**
+ * Delete all plan_rows for (periodId, activity). Guards against FK RESTRICT:
+ * if any rows have child executions the action returns { ok: false, blockedDealers }.
+ * Exception rows (source='exception') are included — the user chose to wipe the
+ * whole plan. Idempotent when no rows exist.
+ */
+export async function deletePlanByScope(
+  periodId: number,
+  activity: string,
+): Promise<DeletePlanState> {
+  await requireSession();
+
+  const activityKey = activity as ActivityKey;
+  try {
+    // Return the count FROM the transaction callback (not via an outer-let mutation)
+    // so the returned `deleted` can never disagree with what actually committed.
+    const deletedCount = await db.transaction(async (tx) => {
+      const existing = await tx
+        .select({ id: planRows.id })
+        .from(planRows)
+        .where(and(eq(planRows.periodId, periodId), eq(planRows.activity, activityKey)));
+      if (existing.length === 0) return 0;
+      const ids = existing.map((r) => Number(r.id));
+      await deletePlanRows(tx, ids);
+      return ids.length;
+    });
+    revalidatePath("/plans");
+    return { ok: true, deleted: deletedCount };
+  } catch (err) {
+    if (isFkRestrictError(err)) {
+      const blocked = await queryBlockedDealers(db, periodId, activity, []);
+      const msg =
+        blocked.length > 0
+          ? `Cannot delete — ${blocked.length} dealer(s) have recorded actuals`
+          : "Cannot delete — some dealers have recorded actuals";
+      return { ok: false, error: msg, blockedDealers: blocked };
+    }
+    throw err;
+  }
 }

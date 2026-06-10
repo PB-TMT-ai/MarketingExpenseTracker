@@ -308,6 +308,23 @@ export async function queryBlockedDealers(
 }
 
 /**
+ * Fetch all SFIDs for (periodId, activity) — lightweight projection for the
+ * client-side preview so the upload form can classify "update" rows before commit.
+ * Returns only sfid strings; does NOT include source filter (exception rows are
+ * still valid existing SFIDs that should be shown as "update" not "valid").
+ */
+export async function fetchSfidsByScope(
+  periodId: number,
+  activity: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ sfid: planRows.sfid })
+    .from(planRows)
+    .where(and(eq(planRows.periodId, periodId), eq(planRows.activity, activity)));
+  return rows.map((r) => r.sfid);
+}
+
+/**
  * Test/smoke helper — wipes the executions table.
  *
  * MUST run BEFORE `_resetPlanRowsForTest` because of the NOT NULL FK with ON DELETE

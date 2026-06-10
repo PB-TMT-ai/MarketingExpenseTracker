@@ -47,7 +47,7 @@ import {
   _resetPeriodsForTest,
   insertPeriod,
 } from "../db/periods";
-import { commitPlanUpload } from "./plans";
+import { commitPlanUpload, deletePlanByScope } from "./plans";
 import type { ParsedRow } from "../excel/types";
 
 beforeAll(async () => {
@@ -370,6 +370,101 @@ describe("lib/actions/plans (Zod + auth + mirror semantics)", () => {
     expect(bySfid.get("SF-X")?.source).toBe("exception");
     expect(bySfid.get("SF-A")?.source).toBe("plan-upload");
     expect(await planRowCount(periodId, "counter-wall")).toBe(2);
+  });
+
+  it("additive mode: re-upload {A} with commitMode='additive' after {A,B} KEEPS B (no orphan delete)", async () => {
+    const periodId = await insertPeriod({
+      type: "month",
+      label: "Aug 2026",
+      startDate: "2026-08-01",
+      endDate: "2026-08-31",
+    });
+    await commitPlanUpload(null, {
+      periodId,
+      activity: "counter-wall",
+      rows: [makeCounterWallRow("SF-A", "West"), makeCounterWallRow("SF-B")],
+    });
+    expect(await planRowCount(periodId, "counter-wall")).toBe(2);
+
+    // Re-upload only SF-A (with a change) in additive mode — SF-B must survive.
+    const state = await commitPlanUpload(null, {
+      periodId,
+      activity: "counter-wall",
+      rows: [makeCounterWallRow("SF-A", "South")],
+      commitMode: "additive",
+    });
+    expect(state.ok).toBe(true);
+    if (!state.ok) throw new Error("unreachable");
+    expect(state.inserted).toBe(0);
+    expect(state.updated).toBe(1);
+    expect(state.deleted).toBe(0); // additive: B is NOT deleted
+    expect(await planRowCount(periodId, "counter-wall")).toBe(2);
+    const rows = await listByPeriodActivity(periodId, "counter-wall");
+    expect(rows.find((r) => r.sfid === "SF-A")?.region).toBe("South");
+    expect(rows.some((r) => r.sfid === "SF-B")).toBe(true);
+  });
+
+  it("deletePlanByScope: removes all rows for the scope when none have executions → ok, deleted=N", async () => {
+    const periodId = await insertPeriod({
+      type: "month",
+      label: "Aug 2026",
+      startDate: "2026-08-01",
+      endDate: "2026-08-31",
+    });
+    await commitPlanUpload(null, {
+      periodId,
+      activity: "counter-wall",
+      rows: [makeCounterWallRow("SF-A"), makeCounterWallRow("SF-B"), makeCounterWallRow("SF-C")],
+    });
+    expect(await planRowCount(periodId, "counter-wall")).toBe(3);
+
+    const state = await deletePlanByScope(periodId, "counter-wall");
+    expect(state.ok).toBe(true);
+    if (!state.ok) throw new Error("unreachable");
+    expect(state.deleted).toBe(3);
+    expect(await planRowCount(periodId, "counter-wall")).toBe(0);
+  });
+
+  it("deletePlanByScope: idempotent on empty scope → ok, deleted=0", async () => {
+    const periodId = await insertPeriod({
+      type: "month",
+      label: "Aug 2026",
+      startDate: "2026-08-01",
+      endDate: "2026-08-31",
+    });
+    const state = await deletePlanByScope(periodId, "counter-wall");
+    expect(state.ok).toBe(true);
+    if (!state.ok) throw new Error("unreachable");
+    expect(state.deleted).toBe(0);
+  });
+
+  it("deletePlanByScope: FK-blocked when a row has an execution → ok=false, blockedDealers, nothing deleted", async () => {
+    const periodId = await insertPeriod({
+      type: "month",
+      label: "Aug 2026",
+      startDate: "2026-08-01",
+      endDate: "2026-08-31",
+    });
+    await commitPlanUpload(null, {
+      periodId,
+      activity: "counter-wall",
+      rows: [makeCounterWallRow("SF-A"), makeCounterWallRow("SF-B")],
+    });
+    const seeded = await listByPeriodActivity(periodId, "counter-wall");
+    const planRowA = seeded.find((r) => r.sfid === "SF-A");
+    if (!planRowA) throw new Error("unreachable");
+    await db.execute(
+      sql`insert into executions (plan_row_id, status, unit_no) values (${planRowA.id}, 'Pending', 'unit-1')`,
+    );
+
+    const state = await deletePlanByScope(periodId, "counter-wall");
+    expect(state.ok).toBe(false);
+    if (state.ok) throw new Error("unreachable");
+    expect(state.blockedDealers).toBeDefined();
+    expect(state.blockedDealers?.some((b) => b.sfid === "SF-A")).toBe(true);
+    // Rollback held — nothing deleted, execution survives.
+    expect(await planRowCount(periodId, "counter-wall")).toBe(2);
+    expect(await executionCount(planRowA.id)).toBe(1);
   });
 
   it("auth-rejected: verifySession returns false → throws Unauthorized, nothing written", async () => {

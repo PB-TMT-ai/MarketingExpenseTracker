@@ -181,3 +181,48 @@ describe("buildPreview — classification + routing + rowNumber math", () => {
     expect(preview).toEqual([]);
   });
 });
+
+describe("buildPreview — existingSfids DB-aware 'update' classification", () => {
+  it("reclassifies a valid row to 'update' when its SFID exists in the DB set", () => {
+    const rows: unknown[][] = [
+      ["SFID", "Region", "Plan Sq Ft"],
+      ["111", "West", "100"], // exists in DB → update
+      ["222", "East", "50"], // new → valid
+    ];
+    const preview = buildPreview(rows, SYNTHETIC_COLS, coerceCell, new Set(["111"]));
+    expect(preview[0].classification).toBe("update");
+    expect(preview[1].classification).toBe("valid");
+    // parsed payload still present for update rows (they get committed)
+    expect(preview[0].parsed).not.toBeNull();
+  });
+
+  it("leaves all rows 'valid' when existingSfids is omitted or empty", () => {
+    const rows: unknown[][] = [
+      ["SFID", "Region", "Plan Sq Ft"],
+      ["111", "West", "100"],
+    ];
+    expect(buildPreview(rows, SYNTHETIC_COLS, coerceCell)[0].classification).toBe("valid");
+    expect(
+      buildPreview(rows, SYNTHETIC_COLS, coerceCell, new Set())[0].classification,
+    ).toBe("valid");
+  });
+
+  it("does NOT reclassify a fieldError row to 'update' even if its SFID exists", () => {
+    const rows: unknown[][] = [
+      ["SFID", "Region", "Plan Sq Ft"],
+      ["111", "West", "abc"], // bad number → fieldError, even though 111 is in DB
+    ];
+    const preview = buildPreview(rows, SYNTHETIC_COLS, coerceCell, new Set(["111"]));
+    expect(preview[0].classification).toBe("fieldError");
+  });
+
+  it("lets in-file duplicate override 'update' (duplicate pass runs last)", () => {
+    const rows: unknown[][] = [
+      ["SFID", "Region", "Plan Sq Ft"],
+      ["111", "West", "100"], // in DB → update, but...
+      ["111", "South", "75"], // ...appears twice in file → duplicate wins
+    ];
+    const preview = buildPreview(rows, SYNTHETIC_COLS, coerceCell, new Set(["111"]));
+    expect(preview.map((p) => p.classification)).toEqual(["duplicate", "duplicate"]);
+  });
+});
